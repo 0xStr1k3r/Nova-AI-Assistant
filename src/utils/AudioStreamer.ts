@@ -1,6 +1,7 @@
 export class AudioStreamer {
   private context: AudioContext;
   private nextStartTime: number = 0;
+  private activeSources: AudioBufferSourceNode[] = [];
 
   constructor(context: AudioContext) {
     this.context = context;
@@ -24,7 +25,7 @@ export class AudioStreamer {
     const audioBuffer = this.context.createBuffer(
       1,
       float32Array.length,
-      24000 // Gemini TTS often returns 24kHz. Wait, does Live return 16kHz or 24kHz? It returns 24kHz. Let's use 24kHz.
+      24000 // Gemini TTS returns 24kHz
     );
     audioBuffer.getChannelData(0).set(float32Array);
 
@@ -38,11 +39,28 @@ export class AudioStreamer {
     }
 
     source.start(this.nextStartTime);
+    this.activeSources.push(source);
+
+    source.onended = () => {
+      const idx = this.activeSources.indexOf(source);
+      if (idx !== -1) {
+        this.activeSources.splice(idx, 1);
+      }
+    };
+
     this.nextStartTime += audioBuffer.duration;
   }
 
   public stop() {
     this.nextStartTime = 0;
-    // For simplicity, we just reset the timer. Strict stop would require keeping references to all source nodes and calling .stop()
+    this.activeSources.forEach((src) => {
+      try {
+        src.stop();
+        src.disconnect();
+      } catch (err) {
+        // ignore errors if source is already stopped/disconnected
+      }
+    });
+    this.activeSources = [];
   }
 }

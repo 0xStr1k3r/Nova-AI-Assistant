@@ -19,15 +19,17 @@ const execAsync = util.promisify(exec);
 async function extractAndSaveMemories(
   ai: GoogleGenAI,
   userName: string,
+  wakeWord: string,
   sessionLog: string[]
 ) {
   if (sessionLog.length < 2) return; // Nothing meaningful to extract
 
+  const assistantName = wakeWord.charAt(0).toUpperCase() + wakeWord.slice(1);
   const transcript = sessionLog.join("\n");
-  const prompt = `You are a memory extraction system for an AI assistant named Nova.
+  const prompt = `You are a memory extraction system for an AI assistant named ${assistantName}.
 
 Extract ONLY the most important and reusable facts regarding the user's style, preferences, setup, and habits.
-These facts will be injected into future sessions to give Nova context about the user.
+These facts will be injected into future sessions to give ${assistantName} context about the user.
 
 EXTRACT if it reveals:
 - User's working or programming style (e.g. coding conventions, architectural style, language preferences, direct vs detailed answers)
@@ -246,9 +248,10 @@ async function startServer() {
 
     const memoryContext = formatMemoryForPrompt(db.memory);
 
+    const assistantName = db.wakeWord.charAt(0).toUpperCase() + db.wakeWord.slice(1);
     const systemInstruction = `${activeMode.instruction}
 
-IDENTITY: Your name is Nova. You are speaking to ${userName}.
+IDENTITY: Your name is ${assistantName}. You are speaking to ${userName}.
 VOICE RULES (non-negotiable):
 - Max 2-3 SHORT sentences per response. You are being spoken aloud.
 - NEVER say "Is there anything else I can help you with?" or any variant of that. EVER.
@@ -473,7 +476,8 @@ ${memoryContext}`;
       console.log("[CLIENT DISCONNECTED] — extracting memories...");
       // Extract smart memories from this session in the background
       if (sessionLog.length > 2) {
-        extractAndSaveMemories(ai, userName, sessionLog).catch(console.error);
+        const dbLatest = getDb();
+        extractAndSaveMemories(ai, dbLatest.userName, dbLatest.wakeWord, sessionLog).catch(console.error);
       }
     });
   });

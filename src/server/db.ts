@@ -135,8 +135,8 @@ export const DEFAULT_MODES: Mode[] = [
 ];
 
 const defaultConfig: NovaConfig = {
-  wakeWord: "nova",
-  userName: "Chiru",
+  wakeWord: process.env.WAKE_WORD || "nova",
+  userName: process.env.USER_NAME || "Chiru",
   activeModeId: "assistant",
   modes: DEFAULT_MODES,
   memory: [],
@@ -145,6 +145,9 @@ const defaultConfig: NovaConfig = {
 
 // ─── DB Operations ────────────────────────────────────────────────────────────
 export function getDb(): NovaConfig {
+  const envWakeWord = process.env.WAKE_WORD;
+  const envUserName = process.env.USER_NAME;
+
   if (fs.existsSync(DB_PATH)) {
     try {
       const raw = fs.readFileSync(DB_PATH, "utf-8");
@@ -154,17 +157,29 @@ export function getDb(): NovaConfig {
       // (so new modes in updates are always available)
       const builtInModes = DEFAULT_MODES;
       const customModes = (saved.modes || []).filter(m => m.isCustom);
-      return {
+      const merged = {
         ...defaultConfig,
         ...saved,
         modes: [...builtInModes, ...customModes],
       };
+
+      if (envWakeWord) merged.wakeWord = envWakeWord;
+      if (envUserName) merged.userName = envUserName;
+
+      return merged;
     } catch (e) {
       console.error("Error reading nova db:", e);
-      return defaultConfig;
+      const merged = { ...defaultConfig };
+      if (envWakeWord) merged.wakeWord = envWakeWord;
+      if (envUserName) merged.userName = envUserName;
+      return merged;
     }
   }
-  return defaultConfig;
+  
+  const merged = { ...defaultConfig };
+  if (envWakeWord) merged.wakeWord = envWakeWord;
+  if (envUserName) merged.userName = envUserName;
+  return merged;
 }
 
 export function saveDb(config: NovaConfig) {

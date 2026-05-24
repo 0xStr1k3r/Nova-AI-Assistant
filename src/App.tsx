@@ -33,6 +33,7 @@ export default function App() {
   // Refs that always hold the latest value — prevents stale closures inside recognition callbacks
   const statusRef = useRef<AppStatus>("idle");
   const configRef = useRef<any>(null);
+  const connectingLockRef = useRef(false);
 
   const isConnected = status === "active";
   const isConnecting = status === "connecting";
@@ -130,9 +131,10 @@ export default function App() {
       // Use refs to read latest values — avoids stale closures
       const wakeWord = configRef.current?.wakeWord?.toLowerCase() || "nova";
       if (transcript.includes(wakeWord)) {
-        addLog(`Wake word "${wakeWord}" detected — activating Nova`, "wake");
         const currentStatus = statusRef.current;
         if (currentStatus !== "active" && currentStatus !== "connecting") {
+          addLog(`Wake word "${wakeWord}" detected — activating Nova`, "wake");
+          stopWakeWordListening();
           connect();
         }
       }
@@ -147,7 +149,11 @@ export default function App() {
     recognition.onend = () => {
       // Auto-restart if we are supposed to be listening
       if (isWakeListeningRef.current) {
-        try { recognition.start(); } catch (_) {}
+        setTimeout(() => {
+          if (isWakeListeningRef.current) {
+            try { recognition.start(); } catch (_) {}
+          }
+        }, 300);
       }
     };
 
@@ -177,6 +183,10 @@ export default function App() {
   };
 
   const connect = async () => {
+    if (connectingLockRef.current || wsRef.current || statusRef.current === "active" || statusRef.current === "connecting") {
+      return;
+    }
+    connectingLockRef.current = true;
     try {
       setStatus("connecting");
       addLog("Initializing voice pipeline...", "info");
@@ -238,6 +248,8 @@ export default function App() {
     } catch (err: any) {
       addLog(`Failed to connect: ${err.message}`, "error");
       disconnect();
+    } finally {
+      connectingLockRef.current = false;
     }
   };
 
@@ -489,7 +501,7 @@ export default function App() {
                  transition={{ duration: 0.3 }}
                >
                  {isConnected
-                   ? "Listening, Chiru..."
+                   ? `Listening, ${config?.userName || "User"}...`
                    : isConnecting
                    ? "Waking up..."
                    : isWakeWordListening
