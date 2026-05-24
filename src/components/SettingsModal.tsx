@@ -75,6 +75,7 @@ export default function SettingsModal({
   const [tab, setTab]                   = useState<"profile" | "voice" | "modes" | "integrations" | "memory">("profile");
   const [saving, setSaving]             = useState(false);
   const [saved, setSaved]               = useState(false);
+  const [saveError, setSaveError]       = useState<string | null>(null);
   const [recordingVoice, setRecordingVoice] = useState(false);
   const [recordingStatus, setRecordingStatus] = useState<string>("");
   const [newVoiceName, setNewVoiceName] = useState<string>("");
@@ -232,20 +233,24 @@ export default function SettingsModal({
   // ── General handlers ──────────────────────────────────────────────────────
   const handleSave = async () => {
     setSaving(true);
+    setSaveError(null);
     try {
       const res = await fetch("/api/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(local),
       });
+      const data = await res.json();
       if (res.ok) {
-        const body = await res.json();
-        setConfig(body.config);
+        setConfig(data.config);
         setSaved(true);
         setTimeout(() => { setSaved(false); onClose(); }, 900);
+      } else {
+        setSaveError(data.error || "Failed to save configuration.");
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      setSaveError(e.message || "Failed to save configuration.");
     } finally {
       setSaving(false);
     }
@@ -1048,35 +1053,40 @@ export default function SettingsModal({
         </div>
 
         {/* ── Footer ──────────────────────────────────────────────────── */}
-        <div className="px-5 py-4 border-t border-white/6 flex justify-end gap-2 shrink-0">
-          <button
-            onClick={onClose}
-            className="px-5 py-2.5 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-white/6 transition-all"
-            style={{ border: "1px solid rgba(255,255,255,0.07)" }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="px-6 py-2.5 rounded-xl text-sm font-semibold text-white flex items-center gap-2 transition-all disabled:opacity-50 min-w-[130px] justify-center"
-            style={saved ? {
-              background: "linear-gradient(135deg, rgba(52,211,153,0.3), rgba(16,185,129,0.2))",
-              border: "1px solid rgba(52,211,153,0.4)",
-            } : {
-              background: "linear-gradient(135deg, rgba(139,92,246,0.65), rgba(99,102,241,0.55))",
-              border: "1px solid rgba(139,92,246,0.45)",
-              boxShadow: "0 4px 20px rgba(139,92,246,0.2)",
-            }}
-          >
-            {saved ? (
-              <><Check size={14} /> Saved!</>
-            ) : saving ? (
-              "Saving…"
-            ) : (
-              <><Save size={14} /> Save Changes</>
-            )}
-          </button>
+        <div className="px-5 py-4 border-t border-white/6 flex items-center justify-between shrink-0">
+          <div className="text-xs text-red-400 font-semibold px-2 animate-slide-up max-w-[55%] truncate" title={saveError || ""}>
+            {saveError}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={onClose}
+              className="px-5 py-2.5 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-white/6 transition-all"
+              style={{ border: "1px solid rgba(255,255,255,0.07)" }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="px-6 py-2.5 rounded-xl text-sm font-semibold text-white flex items-center gap-2 transition-all disabled:opacity-50 min-w-[130px] justify-center"
+              style={saved ? {
+                background: "linear-gradient(135deg, rgba(52,211,153,0.3), rgba(16,185,129,0.2))",
+                border: "1px solid rgba(52,211,153,0.4)",
+              } : {
+                background: "linear-gradient(135deg, rgba(139,92,246,0.65), rgba(99,102,241,0.55))",
+                border: "1px solid rgba(139,92,246,0.45)",
+                boxShadow: "0 4px 20px rgba(139,92,246,0.2)",
+              }}
+            >
+              {saved ? (
+                <><Check size={14} /> Saved!</>
+              ) : saving ? (
+                "Saving…"
+              ) : (
+                <><Save size={14} /> Save Changes</>
+              )}
+            </button>
+          </div>
         </div>
       </div>
     </div>

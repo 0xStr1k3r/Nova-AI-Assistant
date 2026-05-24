@@ -1,4 +1,5 @@
 import "dotenv/config";
+import fs from "fs";
 import express from "express";
 import path from "path";
 import http from "http";
@@ -575,6 +576,26 @@ ${memoryContext}`;
   app.post("/api/config", (req, res) => {
     const db = getDb();
     const newConfig: NovaConfig = { ...db, ...req.body };
+
+    // Validate Obsidian vault path if enabled
+    if (newConfig.integrations?.obsidianEnabled) {
+      const obsidianPath = newConfig.integrations.obsidianPath;
+      if (!obsidianPath) {
+        return res.status(400).json({ error: "Obsidian Vault Path is required when integration is enabled." });
+      }
+      try {
+        if (!fs.existsSync(obsidianPath)) {
+          return res.status(400).json({ error: `Obsidian path does not exist: "${obsidianPath}"` });
+        }
+        const stat = fs.statSync(obsidianPath);
+        if (!stat.isDirectory()) {
+          return res.status(400).json({ error: `Obsidian path is not a directory: "${obsidianPath}"` });
+        }
+      } catch (e: any) {
+        return res.status(400).json({ error: `Invalid Obsidian path: ${e.message}` });
+      }
+    }
+
     saveDb(newConfig);
     res.json({ success: true, config: getDb() }); // Return merged config with built-in modes
   });
