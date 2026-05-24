@@ -11,6 +11,26 @@ Nova is a high-tech personal AI voice assistant powered by the **Gemini Live API
 - 🧠 **Persistent Memory**: A token-efficient fact extraction system that identifies your preferences and habits, storing them dynamically across sessions.
 - 🎭 **8 Operating Modes**: Select custom restriction levels (Assistant, Focus, Deep Dive, Sysadmin, Dev, Unrestricted, Creative, Tutor) in the settings.
 
+## Prerequisites
+
+Before running the setup, ensure you have **Node.js** (v18+) and **Go** (for the optional GoDo integration) installed. Use the command matching your Linux distribution:
+
+### Debian / Ubuntu Family
+```bash
+sudo apt update
+sudo apt install -y nodejs npm golang
+```
+
+### Arch Linux Family
+```bash
+sudo pacman -Syu nodejs npm go
+```
+
+### Red Hat / Fedora Family
+```bash
+sudo dnf install -y nodejs npm golang
+```
+
 ---
 
 ## Quick Start Installation
