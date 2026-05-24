@@ -84,14 +84,77 @@ ${transcript.substring(0, 3000)}`;
 }
 
 // ─── Web Search & Fetching Helpers ─────────────────────────────────────────────
+async function performDuckDuckGoHtmlSearch(query: string): Promise<any[]> {
+  try {
+    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) {
+      throw new Error(`DDG HTML HTTP error: ${res.status}`);
+    }
+    const html = await res.text();
+    const results: any[] = [];
+    
+    // Find all result anchors: class="result__a"
+    const matches = html.matchAll(/<a\s+class="[a-zA-Z0-9_-]*result__a[a-zA-Z0-9_-]*"\s+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi);
+    
+    let count = 0;
+    for (const match of matches) {
+      if (count >= 5) break;
+      let rawUrl = match[1];
+      const title = match[2].replace(/<[^>]+>/g, "").trim();
+      
+      // Resolve DDG redirect URL if present
+      if (rawUrl.includes("uddg=")) {
+        const uddgMatch = rawUrl.match(/uddg=([^&]+)/);
+        if (uddgMatch) {
+          rawUrl = decodeURIComponent(uddgMatch[1]);
+        }
+      }
+      if (rawUrl.startsWith("//")) rawUrl = "https:" + rawUrl;
+
+      // Extract the snippet by looking at the HTML slice right after the link
+      const startIndex = html.indexOf(match[0]);
+      if (startIndex !== -1) {
+        const htmlSlice = html.substring(startIndex, startIndex + 1500);
+        const snippetMatch = htmlSlice.match(/<a\s+class="[a-zA-Z0-9_-]*result__snippet[a-zA-Z0-9_-]*"[^>]*>([\s\S]*?)<\/a>/i);
+        const content = snippetMatch ? snippetMatch[1].replace(/<[^>]+>/g, "").trim() : "";
+        
+        results.push({
+          title,
+          url: rawUrl,
+          content,
+        });
+        count++;
+      }
+    }
+    return results;
+  } catch (err: any) {
+    console.warn(`[DDG HTML SEARCH WARNING] ${err.message}`);
+    return [];
+  }
+}
+
 async function performWebSearch(query: string): Promise<any[]> {
   const searxInstances = [
     "https://search.mdosch.de/",
     "https://searx.oloke.xyz/",
-    "https://etsi.me/"
+    "https://etsi.me/",
+    "https://searx.be/",
+    "https://priv.au/",
+    "https://searx.work/"
   ];
   
-  for (const inst of searxInstances) {
+  // Shuffle SearxNG instances to spread rate limit load
+  const shuffledInstances = [...searxInstances].sort(() => Math.random() - 0.5);
+  
+  for (const inst of shuffledInstances) {
     try {
       const url = `${inst}search?q=${encodeURIComponent(query)}&format=json`;
       const res = await fetch(url, {
@@ -115,9 +178,17 @@ async function performWebSearch(query: string): Promise<any[]> {
     }
   }
 
-  // Wikipedia + DuckDuckGo definition fallback if all SearXNG instances fail
+  // ─── Fallback 1: DuckDuckGo HTML scraper ───
+  console.log("[SEARCH FALLBACK] Trying DuckDuckGo HTML Scraper API");
+  const ddgResults = await performDuckDuckGoHtmlSearch(query);
+  if (ddgResults.length > 0) {
+    console.log(`[SEARCH OK] Retrieved ${ddgResults.length} results via DDG HTML fallback`);
+    return ddgResults;
+  }
+
+  // ─── Fallback 2: Wikipedia + DDG Instant Answer ───
   try {
-    console.log("[SEARCH FALLBACK] Trying Wikipedia + DuckDuckGo fallback APIs");
+    console.log("[SEARCH FALLBACK] Trying Wikipedia + DuckDuckGo Instant Answer definition APIs");
     const results: any[] = [];
 
     // 1. Wikipedia API
@@ -159,7 +230,7 @@ async function performWebSearch(query: string): Promise<any[]> {
 
     if (results.length > 0) return results;
   } catch (fallbackErr: any) {
-    console.error("[SEARCH FALLBACK] All fallbacks failed:", fallbackErr.message);
+    console.error("[SEARCH FALLBACK] All fallback APIs failed:", fallbackErr.message);
   }
 
   throw new Error("All search engines are currently rate-limiting or offline. Please try again later.");
