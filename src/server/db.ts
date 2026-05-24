@@ -25,6 +25,13 @@ export interface MemoryEntry {
   timestamp: string;
 }
 
+export interface VoiceProfile {
+  meanPitch: number;
+  minPitch: number;
+  maxPitch: number;
+  rmsThreshold: number;
+}
+
 export interface NovaConfig {
   wakeWord: string;
   userName: string;
@@ -32,6 +39,8 @@ export interface NovaConfig {
   modes: Mode[];
   memory: MemoryEntry[];
   voiceName: string;
+  voiceResponseMode: "all" | "user";
+  userVoiceProfile: VoiceProfile | null;
 }
 
 
@@ -141,6 +150,8 @@ const defaultConfig: NovaConfig = {
   modes: DEFAULT_MODES,
   memory: [],
   voiceName: "Aoede",
+  voiceResponseMode: "all",
+  userVoiceProfile: null,
 };
 
 // ─── DB Operations ────────────────────────────────────────────────────────────

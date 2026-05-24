@@ -3,6 +3,7 @@ import {
   X, Save, Plus, Trash, Brain, Mic, Sliders, User,
   Volume2, ShieldCheck, ShieldOff, Check,
 } from "lucide-react";
+import { detectPitch, calculateRMS, VoiceProfile } from "../utils/voiceProfile";
 
 export interface Mode {
   id: string;
@@ -28,6 +29,8 @@ export type ConfigType = {
   modes: Mode[];
   memory: MemoryEntry[];
   voiceName: string;
+  voiceResponseMode: "all" | "user";
+  userVoiceProfile: VoiceProfile | null;
 };
 
 const VOICE_OPTIONS = [
@@ -58,6 +61,81 @@ export default function SettingsModal({
   const [tab, setTab] = useState<"profile" | "voice" | "modes" | "memory">("profile");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [recordingVoice, setRecordingVoice] = useState(false);
+  const [recordingStatus, setRecordingStatus] = useState<string>("");
+
+  const recordVoiceProfile = async () => {
+    try {
+      setRecordingVoice(true);
+      setRecordingStatus("Requesting microphone...");
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+      const source = audioCtx.createMediaStreamSource(stream);
+      const processor = audioCtx.createScriptProcessor(2048, 1, 1);
+      
+      source.connect(processor);
+      processor.connect(audioCtx.destination);
+      
+      const pitches: number[] = [];
+      const rmsValues: number[] = [];
+      const recordTimeMs = 3000;
+      
+      setRecordingStatus("Recording... Speak normally for 3 seconds.");
+      
+      processor.onaudioprocess = (e) => {
+        const buffer = e.inputBuffer.getChannelData(0);
+        const rms = calculateRMS(buffer);
+        rmsValues.push(rms);
+        
+        if (rms > 0.015) {
+          const pitch = detectPitch(buffer, 16000);
+          if (pitch !== -1) {
+            pitches.push(pitch);
+          }
+        }
+      };
+      
+      await new Promise((resolve) => setTimeout(resolve, recordTimeMs));
+      
+      processor.disconnect();
+      source.disconnect();
+      stream.getTracks().forEach(t => t.stop());
+      audioCtx.close();
+      
+      if (pitches.length < 5) {
+        setRecordingStatus("No clear voice pitch detected. Please speak louder and try again.");
+        setRecordingVoice(false);
+        return;
+      }
+      
+      pitches.sort((a, b) => a - b);
+      const meanPitch = pitches.reduce((sum, p) => sum + p, 0) / pitches.length;
+      const p10 = pitches[Math.floor(pitches.length * 0.1)];
+      const p90 = pitches[Math.floor(pitches.length * 0.9)];
+      const averageRMS = rmsValues.reduce((sum, v) => sum + v, 0) / rmsValues.length;
+      const rmsThreshold = Math.max(0.012, averageRMS * 0.4);
+      
+      const profile: VoiceProfile = {
+        meanPitch: Math.round(meanPitch),
+        minPitch: Math.round(p10),
+        maxPitch: Math.round(p90),
+        rmsThreshold: Number(rmsThreshold.toFixed(4)),
+      };
+      
+      setLocal({
+        ...local,
+        userVoiceProfile: profile,
+      });
+      setRecordingStatus(`Voice profile recorded: Mean ${profile.meanPitch}Hz`);
+      setRecordingVoice(false);
+      
+    } catch (err: any) {
+      console.error(err);
+      setRecordingStatus(`Error: ${err.message}`);
+      setRecordingVoice(false);
+    }
+  };
 
   useEffect(() => {
     if (config) setLocal(JSON.parse(JSON.stringify(config)));
@@ -205,6 +283,91 @@ export default function SettingsModal({
                   Say this word to wake Nova. Keep it short (1-2 syllables) for best recognition. E.g. "nova", "hey nova", "iris".
                 </p>
               </div>
+
+              <div>
+                <label className="text-xs text-slate-400 font-medium mb-2 block">Voice Response Mode</label>
+                <select
+                  value={local.voiceResponseMode || "all"}
+                  onChange={e => setLocal({ ...local, voiceResponseMode: e.target.value as "all" | "user" })}
+                  className="w-full px-4 py-2.5 rounded-xl text-sm text-white focus:outline-none focus:ring-1 focus:ring-violet-500/50 transition-all cursor-pointer"
+                  style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}
+                >
+                  <option value="all" className="bg-[#0c0c16]">Respond to All Voices</option>
+                  <option value="user" className="bg-[#0c0c16]">Respond to Registered User Only</option>
+                </select>
+                <p className="text-[11px] text-slate-600 mt-1.5">
+                  Choose whether Nova responds to any voice in the room or filters for your recorded voice profile only.
+                </p>
+              </div>
+
+              {local.voiceResponseMode === "user" && (
+                <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-semibold text-white">Registered Voice Profile</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">Filter speech by your fundamental frequency (pitch)</p>
+                    </div>
+                    {local.userVoiceProfile && (
+                      <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-0.5 rounded-full font-semibold font-mono">
+                        Active ({local.userVoiceProfile.meanPitch} Hz)
+                      </span>
+                    )}
+                  </div>
+
+                  {local.userVoiceProfile ? (
+                    <div className="text-xs text-slate-300 space-y-2 font-mono">
+                      <div className="grid grid-cols-2 gap-2 text-[11px] bg-black/20 p-2.5 rounded-xl border border-white/5">
+                        <div>Mean Pitch: <span className="text-violet-300">{local.userVoiceProfile.meanPitch} Hz</span></div>
+                        <div>Pitch Range: <span className="text-violet-300">{local.userVoiceProfile.minPitch}Hz - {local.userVoiceProfile.maxPitch}Hz</span></div>
+                        <div>RMS Thresh: <span className="text-violet-300">{local.userVoiceProfile.rmsThreshold}</span></div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          disabled={recordingVoice}
+                          onClick={recordVoiceProfile}
+                          className="px-3 py-1.5 bg-violet-600/20 hover:bg-violet-600/30 text-violet-300 border border-violet-500/30 rounded-xl font-medium transition-all text-[11px] disabled:opacity-50"
+                        >
+                          Re-record Voice
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setLocal({ ...local, userVoiceProfile: null })}
+                          className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/20 rounded-xl font-medium transition-all text-[11px]"
+                        >
+                          Clear Profile
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-xs text-amber-400 leading-relaxed">
+                        ⚠️ No voice profile recorded yet. Please click the button below to register your voice footprint.
+                      </p>
+                      <button
+                        type="button"
+                        disabled={recordingVoice}
+                        onClick={recordVoiceProfile}
+                        className="px-4 py-2 bg-gradient-to-r from-violet-500 to-indigo-500 hover:from-violet-600 hover:to-indigo-600 text-white rounded-xl font-semibold transition-all text-xs flex items-center gap-2 shadow-lg shadow-violet-500/15 disabled:opacity-50"
+                      >
+                        <Mic size={12} />
+                        Record My Voice (3s)
+                      </button>
+                    </div>
+                  )}
+
+                  {recordingStatus && (
+                    <p className={`text-[11px] font-mono p-2 rounded-lg bg-black/35 ${
+                      recordingVoice ? "text-violet-400 animate-pulse" 
+                      : recordingStatus.includes("Error") || recordingStatus.includes("No clear") 
+                      ? "text-red-400 border border-red-500/10" 
+                      : "text-emerald-400 border border-emerald-500/10"
+                    }`}>
+                      {recordingStatus}
+                    </p>
+                  )}
+                </div>
+              )}
 
               <div
                 className="p-4 rounded-2xl space-y-2"

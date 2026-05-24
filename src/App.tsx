@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { pcmToBase64 } from "./utils/audio";
 import { AudioStreamer } from "./utils/AudioStreamer";
 import SettingsModal from "./components/SettingsModal";
+import { detectPitch, matchesVoiceProfile, calculateRMS } from "./utils/voiceProfile";
 
 type AppStatus = "idle" | "wake_listening" | "connecting" | "active";
 
@@ -34,6 +35,10 @@ export default function App() {
   const statusRef = useRef<AppStatus>("idle");
   const configRef = useRef<any>(null);
   const connectingLockRef = useRef(false);
+  const standbyAudioCtxRef = useRef<AudioContext | null>(null);
+  const standbyStreamRef = useRef<MediaStream | null>(null);
+  const standbyProcessorRef = useRef<ScriptProcessorNode | null>(null);
+  const lastUserVoiceTimeRef = useRef<number>(0);
 
   const isConnected = status === "active";
   const isConnecting = status === "connecting";
@@ -112,12 +117,62 @@ export default function App() {
     }
   }, [hasInteracted, config]);
 
+  const startStandbyAudioAnalysis = async () => {
+    try {
+      if (standbyAudioCtxRef.current) return;
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      standbyStreamRef.current = stream;
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+      standbyAudioCtxRef.current = audioCtx;
+      const source = audioCtx.createMediaStreamSource(stream);
+      const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+      standbyProcessorRef.current = processor;
+      
+      source.connect(processor);
+      processor.connect(audioCtx.destination);
+      
+      processor.onaudioprocess = (e) => {
+        const buffer = e.inputBuffer.getChannelData(0);
+        const profile = configRef.current?.userVoiceProfile;
+        if (profile) {
+          const isUser = matchesVoiceProfile(buffer, 16000, profile);
+          if (isUser) {
+            lastUserVoiceTimeRef.current = Date.now();
+          }
+        }
+      };
+    } catch (err) {
+      console.warn("Could not start standby audio analysis for user verification:", err);
+    }
+  };
+
+  const stopStandbyAudioAnalysis = () => {
+    if (standbyProcessorRef.current) {
+      try { standbyProcessorRef.current.disconnect(); } catch (_) {}
+      standbyProcessorRef.current = null;
+    }
+    if (standbyStreamRef.current) {
+      try {
+        standbyStreamRef.current.getTracks().forEach(t => t.stop());
+      } catch (_) {}
+      standbyStreamRef.current = null;
+    }
+    if (standbyAudioCtxRef.current) {
+      try { standbyAudioCtxRef.current.close(); } catch (_) {}
+      standbyAudioCtxRef.current = null;
+    }
+  };
+
   const startWakeWordListening = () => {
     if (!("webkitSpeechRecognition" in window || "SpeechRecognition" in window)) {
       addLog("Speech recognition not supported.", "error");
       return;
     }
     if (isWakeListeningRef.current) return;
+
+    if (configRef.current?.voiceResponseMode === "user" && configRef.current?.userVoiceProfile) {
+      startStandbyAudioAnalysis();
+    }
 
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     const recognition = new SR();
@@ -133,6 +188,13 @@ export default function App() {
       if (transcript.includes(wakeWord)) {
         const currentStatus = statusRef.current;
         if (currentStatus !== "active" && currentStatus !== "connecting") {
+          if (configRef.current?.voiceResponseMode === "user" && configRef.current?.userVoiceProfile) {
+            const timeSinceUserSpoke = Date.now() - lastUserVoiceTimeRef.current;
+            if (timeSinceUserSpoke > 2500) {
+              addLog("Wake word heard, but speaker pitch did not match registered user profile. Trigger ignored.", "info");
+              return;
+            }
+          }
           addLog(`Wake word "${wakeWord}" detected — activating Nova`, "wake");
           stopWakeWordListening();
           connect();
@@ -166,6 +228,7 @@ export default function App() {
 
   const stopWakeWordListening = () => {
     isWakeListeningRef.current = false;
+    stopStandbyAudioAnalysis();
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch (_) {}
       recognitionRef.current = null;
@@ -210,8 +273,22 @@ export default function App() {
       wsRef.current = ws;
 
       processor.onaudioprocess = (e) => {
+        const channelData = e.inputBuffer.getChannelData(0);
+        let shouldSend = true;
+        
+        if (configRef.current?.voiceResponseMode === "user" && configRef.current?.userVoiceProfile) {
+          const isUser = matchesVoiceProfile(channelData, 16000, configRef.current.userVoiceProfile);
+          if (isUser) {
+            lastUserVoiceTimeRef.current = Date.now();
+          }
+          if (Date.now() - lastUserVoiceTimeRef.current > 1200) {
+            shouldSend = false;
+          }
+        }
+
         if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ audio: pcmToBase64(e.inputBuffer.getChannelData(0)) }));
+          const dataToSend = shouldSend ? channelData : new Float32Array(channelData.length);
+          ws.send(JSON.stringify({ audio: pcmToBase64(dataToSend) }));
         }
       };
 
