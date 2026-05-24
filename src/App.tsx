@@ -341,7 +341,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* Main App */}
-      <div className="w-full h-screen gradient-bg overflow-hidden flex flex-col relative">
+      <div className="w-full min-h-screen lg:h-screen lg:overflow-hidden gradient-bg flex flex-col relative overflow-y-auto lg:overflow-y-visible">
         
         {/* Animated background gradient overlay */}
         <div className="absolute inset-0 opacity-30 pointer-events-none">
@@ -416,17 +416,12 @@ export default function App() {
         </div>
 
         {/* Main content */}
-        <div className="relative z-10 flex-1 grid grid-cols-1 lg:grid-cols-5 gap-6 min-h-0 p-6 overflow-hidden">
+        <div className="relative z-10 flex-1 grid grid-cols-1 lg:grid-cols-5 gap-6 p-6 min-h-0 overflow-y-auto lg:overflow-hidden">
 
           {/* Left: Orb panel */}
           <div className="lg:col-span-3 glass-strong rounded-3xl flex flex-col items-center justify-center relative overflow-hidden p-8 hover-lift">
 
-            {/* Ambient ring decoration */}
-            <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-             <div className={`w-[420px] h-[420px] rounded-full border border-violet-500/10 ring-1 ${isConnected ? "opacity-100" : "opacity-50"} transition-opacity duration-700`} />
-             <div className={`absolute w-[330px] h-[330px] rounded-full border border-indigo-500/15 ring-2 ${isConnected ? "opacity-100" : "opacity-40"} transition-opacity duration-700`} />
-             <div className={`absolute w-[240px] h-[240px] rounded-full border border-violet-500/20 ring-3 ${isConnected ? "opacity-100" : "opacity-30"} transition-opacity duration-700`} />
-            </div>
+
 
             {/* Central Orb */}
             <div className="relative z-10 orb-float">
@@ -527,50 +522,62 @@ export default function App() {
           {/* Right: Activity log and stats */}
           <div className="lg:col-span-2 flex flex-col gap-4 min-h-0">
 
-            {/* Activity feed */}
-            <div className="flex-1 glass rounded-3xl p-6 flex flex-col min-h-0 hover-lift">
-             <div className="flex items-center justify-between mb-4 shrink-0">
-               <span className="text-xs font-bold text-slate-300 uppercase tracking-widest flex items-center gap-2">
-                 <div className="w-2 h-2 rounded-full bg-gradient-to-r from-violet-400 to-cyan-400" />
-                 Activity Log
-               </span>
-               <span className="text-xs text-slate-500 font-mono bg-white/5 px-2 py-1 rounded-lg">{logs.length}</span>
-             </div>
+             {/* Activity feed */}
+             <div className="flex-1 glass rounded-3xl p-6 flex flex-col min-h-0 hover-lift">
+              <div className="flex items-center justify-between mb-4 shrink-0">
+                <span className="text-xs font-bold text-slate-300 uppercase tracking-widest flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-gradient-to-r from-violet-400 to-cyan-400 animate-pulse" />
+                  Activity Log
+                </span>
+                <div className="flex items-center gap-2">
+                  {logs.length > 0 && (
+                    <button
+                      onClick={() => setLogs([])}
+                      className="text-[10px] text-slate-500 hover:text-red-400 font-mono hover:bg-white/5 px-2 py-0.5 rounded transition-all cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  )}
+                  <span className="text-xs text-slate-500 font-mono bg-white/5 px-2 py-1 rounded-lg">{logs.length}</span>
+                </div>
+              </div>
 
-             <div className="flex-1 overflow-y-auto space-y-2 min-h-0 pr-2">
-               {logs.length === 0 ? (
-                 <div className="h-full flex flex-col items-center justify-center text-slate-600 gap-3">
-                   <Brain className="w-10 h-10 opacity-30" />
-                   <p className="text-sm">No activity yet</p>
-                 </div>
-               ) : (
-                 logs.map((log, i) => (
-                   <motion.div
-                     key={i}
-                     initial={{ opacity: 0, x: 15 }}
-                     animate={{ opacity: 1, x: 0 }}
-                     className="flex items-start gap-3 p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
-                   >
-                     <div className={`w-1.5 rounded-full shrink-0 mt-1.5 ${
-                       log.type === "error" ? "bg-red-500 h-3"
-                       : log.type === "success" ? "bg-emerald-400 h-3"
-                       : log.type === "wake" ? "bg-violet-400 h-3"
-                       : "bg-slate-600 h-2"
-                     }`} />
-                     <p className={`text-xs leading-relaxed font-medium ${
-                       log.type === "error" ? "text-red-300"
-                       : log.type === "success" ? "text-emerald-300"
-                       : log.type === "wake" ? "text-violet-300"
-                       : "text-slate-300"
-                     }`}>
-                       {log.msg}
-                     </p>
-                   </motion.div>
-                 ))
-               )}
-               <div ref={logsEndRef} />
+              <div className="flex-1 overflow-y-auto space-y-2 min-h-0 pr-2">
+                {logs.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-slate-600 gap-3">
+                    <Brain className="w-10 h-10 opacity-30" />
+                    <p className="text-sm font-medium">No activity yet</p>
+                  </div>
+                ) : (
+                  logs.map((log, i) => (
+                    <motion.div
+                      key={i}
+                      initial={{ opacity: 0, x: 15 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      className="flex items-start gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors border border-white/5"
+                    >
+                      <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded shrink-0 uppercase tracking-wider ${
+                        log.type === "error" ? "bg-red-500/15 text-red-400 border border-red-500/20"
+                        : log.type === "success" ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20"
+                        : log.type === "wake" ? "bg-violet-500/15 text-violet-400 border border-violet-500/20"
+                        : "bg-blue-500/10 text-blue-400 border border-blue-500/15"
+                      }`}>
+                        {log.type === "wake" ? "WAKE" : log.type === "success" ? "ONLINE" : log.type === "error" ? "ERROR" : "SYSTEM"}
+                      </span>
+                      <p className={`text-xs leading-relaxed font-mono ${
+                        log.type === "error" ? "text-red-300"
+                        : log.type === "success" ? "text-emerald-300"
+                        : log.type === "wake" ? "text-violet-300"
+                        : "text-slate-300"
+                      }`}>
+                        {log.msg}
+                      </p>
+                    </motion.div>
+                  ))
+                )}
+                <div ref={logsEndRef} />
+              </div>
              </div>
-            </div>
 
             {/* System status card */}
             <div className="glass rounded-3xl p-6 shrink-0 hover-lift">

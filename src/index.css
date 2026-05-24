@@ -1,7 +1,8 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: 'Inter', sans-serif;
+  --font-sans: 'Plus Jakarta Sans', 'Inter', sans-serif;
+  --font-display: 'Outfit', 'Inter', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 }
 
@@ -11,7 +12,8 @@
 ::-webkit-scrollbar-thumb { background: rgba(139, 92, 246, 0.4); border-radius: 6px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(139, 92, 246, 0.6); }
 
-* { font-family: 'Inter', sans-serif; }
+* { font-family: 'Plus Jakarta Sans', 'Inter', sans-serif; }
+h1, h2, h3, .font-display { font-family: 'Outfit', 'Inter', sans-serif; }
 code, .font-mono { font-family: 'JetBrains Mono', monospace; }
 
 /* Orb glow ring animations */

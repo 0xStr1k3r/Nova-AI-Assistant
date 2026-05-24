@@ -26,21 +26,21 @@ async function extractAndSaveMemories(
   const transcript = sessionLog.join("\n");
   const prompt = `You are a memory extraction system for an AI assistant named Nova.
 
-Extract ONLY the most important and reusable facts from this conversation transcript.
+Extract ONLY the most important and reusable facts regarding the user's style, preferences, setup, and habits.
 These facts will be injected into future sessions to give Nova context about the user.
 
 EXTRACT if it reveals:
-- User's personal preferences (tools they like, how they work, what they dislike)
-- Facts about the user's system/setup that matter for future sessions
-- Recurring tasks or workflows the user does
-- Important personal context the user shared
-- Technical preferences or habits
+- User's working or programming style (e.g. coding conventions, architectural style, language preferences, direct vs detailed answers)
+- User's personal preferences (what they like, dislike, how they prefer tasks to be done)
+- Facts about the user's system setup, OS, hardware, environment variables, or directories
+- Recurring workflows, tasks, or custom instructions the user gives you
+- Personal details, tone, or interaction habits that help personalize the experience
 
 DO NOT EXTRACT:
 - Generic questions and answers
-- One-off commands with no lasting significance
-- Errors or failures that aren't pattern-relevant
-- Small talk or pleasantries
+- One-off command lines with no repeating significance
+- Temporary build/system errors that are not pattern-relevant
+- Small talk or polite pleasantries
 
 Format: Return a JSON array only (no markdown, no explanation):
 [

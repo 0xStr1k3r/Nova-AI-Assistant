@@ -1,11 +1,11 @@
 #!/bin/bash
 
 ##############################################################################
-# Nexus OS Voice Assistant - Installation and Setup Script
-# This script handles dependency installation and running the application
+# Nexus OS Voice Assistant - Consolidated Installation & Setup Script
+# This script handles dependencies, permissions, and background daemon setup.
 ##############################################################################
 
-set -e  # Exit on any error
+set -e  # Exit on error
 
 # Colors for output
 RED='\033[0;31m'
@@ -14,75 +14,47 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Functions
+# Helper Functions
 print_header() {
     echo -e "${BLUE}================================================${NC}"
-    echo -e "${BLUE}$1${NC}"
+    echo -e "${BLUE}   $1${NC}"
     echo -e "${BLUE}================================================${NC}"
 }
 
-print_success() {
-    echo -e "${GREEN}✓ $1${NC}"
+print_success() { echo -e "${GREEN}✓ $1${NC}"; }
+print_error() { echo -e "${RED}✗ $1${NC}"; }
+print_warning() { echo -e "${YELLOW}⚠ $1${NC}"; }
+print_info() { echo -e "${BLUE}ℹ $1${NC}"; }
+
+# Prevent running as root directly
+check_not_root() {
+    if [ "$EUID" -eq 0 ]; then
+        print_error "Please do NOT run this script with 'sudo' or as root directly."
+        echo "Run it as your regular user: ./install.sh"
+        echo "The script will prompt for sudo access internally when necessary."
+        exit 1
+    fi
 }
 
-print_error() {
-    echo -e "${RED}✗ $1${NC}"
-}
-
-print_warning() {
-    echo -e "${YELLOW}⚠ $1${NC}"
-}
-
-print_info() {
-    echo -e "${BLUE}ℹ $1${NC}"
-}
-
-# Check if Node.js is installed
-check_nodejs() {
+# Check prerequisites
+check_prerequisites() {
     print_header "Checking Prerequisites"
     
     if ! command -v node &> /dev/null; then
-        print_error "Node.js is not installed"
-        echo "Please install Node.js from https://nodejs.org/"
+        print_error "Node.js is not installed."
+        echo "Please install Node.js (v18+) from https://nodejs.org/"
         exit 1
     fi
-    
-    NODE_VERSION=$(node -v)
-    print_success "Node.js is installed: $NODE_VERSION"
+    print_success "Node.js: $(node -v)"
     
     if ! command -v npm &> /dev/null; then
-        print_error "npm is not installed"
+        print_error "npm is not installed."
         exit 1
     fi
-    
-    NPM_VERSION=$(npm -v)
-    print_success "npm is installed: $NPM_VERSION"
+    print_success "npm: $(npm -v)"
 }
 
-# Install dependencies
-install_dependencies() {
-    print_header "Installing Dependencies"
-    
-    if [ -d "node_modules" ]; then
-        print_warning "node_modules already exists"
-        read -p "Do you want to reinstall dependencies? (y/n) " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            print_info "Removing existing node_modules..."
-            rm -rf node_modules
-            npm install
-        else
-            print_info "Skipping dependency installation"
-        fi
-    else
-        print_info "Installing npm packages..."
-        npm install
-    fi
-    
-    print_success "Dependencies installed successfully"
-}
-
-# Setup environment variables
+# Setup environment variables (.env)
 setup_env() {
     print_header "Setting Up Environment Variables"
     
@@ -90,170 +62,306 @@ setup_env() {
         if [ -f ".env.example" ]; then
             print_info "Creating .env from .env.example..."
             cp .env.example .env
-            print_warning "Please update .env with your actual values:"
-            print_warning "  - GEMINI_API_KEY: Your Gemini API key from https://aistudio.google.com"
-            print_warning "  - APP_URL: The URL where your app is hosted (e.g., http://localhost:5173)"
-            read -p "Press Enter once you've updated .env..."
+        else
+            echo "GEMINI_API_KEY=YOUR_API_KEY" > .env
+            echo "PORT=3000" >> .env
+        fi
+    fi
+
+    # Read current GEMINI_API_KEY
+    API_KEY=$(grep -E "^GEMINI_API_KEY=" .env | cut -d'=' -f2- | tr -d '"' | tr -d "'")
+
+    if [ -z "$API_KEY" ] || [ "$API_KEY" == "YOUR_API_KEY" ] || [ "$API_KEY" == "MY_GEMINI_API_KEY" ]; then
+        print_warning "Gemini API Key is not set or is using the placeholder."
+        echo -e "You can get a free API key from ${BLUE}https://aistudio.google.com${NC}"
+        read -p "Enter your Gemini API Key (or press Enter to set it later): " user_key
+        if [ ! -z "$user_key" ]; then
+            # Replace key in .env
+            sed -i "s|^GEMINI_API_KEY=.*|GEMINI_API_KEY=$user_key|" .env
+            print_success "API Key updated in .env"
+        else
+            print_warning "API Key was not set. The app will run, but Gemini connections will fail."
         fi
     else
-        print_success ".env already exists"
-    fi
-    
-    # Check for GEMINI_API_KEY
-    if grep -q "GEMINI_API_KEY=" .env && grep -q "MY_GEMINI_API_KEY" .env; then
-        print_warning "GEMINI_API_KEY is not set in .env!"
-        print_info "You can set it now or run the app without it"
+        print_success "Gemini API Key is set in .env"
     fi
 }
 
-# Build the project
-build_project() {
-    print_header "Building Project"
+# Install npm packages
+install_dependencies() {
+    print_header "Installing Dependencies"
     
-    print_info "Running build script..."
-    npm run build
-    
-    if [ -d "dist" ]; then
-        print_success "Build completed successfully"
+    if [ -d "node_modules" ]; then
+        print_warning "node_modules already exists."
+        read -p "Do you want to reinstall dependencies? (y/n): " choice
+        if [[ "$choice" =~ ^[Yy]$ ]]; then
+            print_info "Removing existing node_modules..."
+            rm -rf node_modules
+            print_info "Installing npm packages..."
+            npm install
+            print_success "Dependencies reinstalled successfully."
+        else
+            print_info "Skipping npm installation"
+        fi
     else
-        print_error "Build failed - dist directory not created"
-        exit 1
+        print_info "Installing npm packages..."
+        npm install
+        print_success "Dependencies installed successfully."
     fi
 }
 
-# Run the application
+# Setup System Permissions & background Daemon
+setup_permissions_and_service() {
+    print_header "Setting Up System Permissions & Service"
+    
+    USER_NAME=$(id -un)
+    PROJECT_DIR=$(pwd)
+    
+    print_info "Configuring settings for user '$USER_NAME' at '$PROJECT_DIR'"
+    
+    # 1. Microphone access
+    print_info "Adding '$USER_NAME' to audio groups..."
+    sudo usermod -aG audio "$USER_NAME"
+    if getent group pulse-access > /dev/null 2>&1; then
+        sudo usermod -aG pulse-access "$USER_NAME"
+    fi
+    
+    # 2. Passwordless sudo for voice commands
+    print_info "Configuring passwordless sudo for voice assistant command execution..."
+    SUDOERS_FILE="/etc/sudoers.d/nexus-voice-assistant"
+    sudo bash -c "cat << 'EOF' > $SUDOERS_FILE
+# Nexus OS Voice Assistant command execution rule
+$USER_NAME ALL=(ALL) NOPASSWD: ALL
+EOF"
+    sudo chmod 0440 "$SUDOERS_FILE"
+    
+    # 3. Session lingering
+    print_info "Enabling user session lingering..."
+    sudo loginctl enable-linger "$USER_NAME"
+    
+    # 4. Systemd user service
+    print_info "Configuring systemd user service..."
+    SYSTEMD_USER_DIR="/home/$USER_NAME/.config/systemd/user"
+    
+    if [ -d "/home/$USER_NAME/.config/systemd" ]; then
+        sudo chown -R "$USER_NAME:$USER_NAME" "/home/$USER_NAME/.config/systemd"
+    fi
+    
+    mkdir -p "$SYSTEMD_USER_DIR"
+    
+    cat << EOF > "$SYSTEMD_USER_DIR/nexus-assistant.service"
+[Unit]
+Description=Nexus OS Voice Assistant Daemon
+After=network.target sound.target
+
+[Service]
+Type=simple
+WorkingDirectory=$PROJECT_DIR
+ExecStart=/usr/bin/npm run dev
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
+EOF
+
+    sudo chown -R "$USER_NAME:$USER_NAME" "/home/$USER_NAME/.config/systemd"
+    
+    print_info "Enabling and starting systemd service..."
+    export XDG_RUNTIME_DIR="/run/user/$(id -u $USER_NAME)"
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u $USER_NAME)/bus"
+    
+    systemctl --user daemon-reload
+    systemctl --user enable nexus-assistant.service
+    systemctl --user restart nexus-assistant.service
+    
+    print_success "System permissions and background service configured successfully!"
+}
+
+# Optional GoDo integration
+setup_godo_integration() {
+    print_header "Optional Integrations"
+    read -p "Do you use the GoDo CLI task manager (https://github.com/0xStr1k3r/GoDo)? Integrate it? (y/n): " godo_choice
+    if [[ "$godo_choice" =~ ^[Yy]$ ]]; then
+        print_info "Integrating GoDo CLI task manager..."
+        node -e "
+        const fs = require('fs');
+        const path = require('path');
+        const os = require('os');
+        const DB_DIR = path.join(os.homedir(), '.config', 'nova-voice-assistant');
+        if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });
+        const DB_PATH = path.join(DB_DIR, 'nova-data.json');
+        let db = { wakeWord: 'nova', userName: 'Chiru', activeModeId: 'assistant', modes: [], memory: [], voiceName: 'Aoede' };
+        if (fs.existsSync(DB_PATH)) {
+          try { db = JSON.parse(fs.readFileSync(DB_PATH, 'utf-8')); } catch(e) {}
+        }
+        if (!db.memory) db.memory = [];
+        const hasGoDo = db.memory.some(m => m.content.includes('GoDo CLI'));
+        if (!hasGoDo) {
+          db.memory.push({
+            id: 'mem_godo_' + Date.now(),
+            content: 'User manages tasks using GoDo CLI. Commands: godo list to show, godo add -t \"title\" to add, godo complete <id> to finish.',
+            category: 'preference',
+            importance: 3,
+            timestamp: new Date().toISOString()
+          });
+          fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2), 'utf-8');
+          console.log('✓ GoDo task manager integration added to assistant memory.');
+        } else {
+          console.log('ℹ GoDo task manager integration is already in memory.');
+        }
+        "
+
+        # Try to install GoDo CLI
+        if command -v godo &> /dev/null; then
+            print_success "GoDo CLI is already installed on your system."
+        else
+            print_info "Attempting to install GoDo CLI automatically..."
+            if ! command -v go &> /dev/null; then
+                print_warning "Go compiler is not installed."
+                print_error "Failed to install GoDo automatically. Please install Go (golang) first, or install GoDo manually from: https://github.com/0xStr1k3r/GoDo"
+            else
+                # Setup temp directory
+                TEMP_DIR=$(mktemp -d)
+                print_info "Cloning GoDo repository..."
+                if git clone --depth 1 https://github.com/0xStr1k3r/GoDo.git "$TEMP_DIR/GoDo" &> /dev/null; then
+                    cd "$TEMP_DIR/GoDo"
+                    print_info "Building GoDo executable..."
+                    if go build -buildvcs=false -o godo . &> /dev/null; then
+                        print_info "Installing GoDo globally (requires sudo)..."
+                        if sudo install -m 0755 godo /usr/local/bin/godo; then
+                            print_success "GoDo CLI installed successfully to /usr/local/bin/godo!"
+                        else
+                            print_error "Failed to install GoDo executable globally. Please manually install the binary from: https://github.com/0xStr1k3r/GoDo"
+                        fi
+                    else
+                        print_error "Failed to compile GoDo. Please build it manually from: https://github.com/0xStr1k3r/GoDo"
+                    fi
+                else
+                    print_error "Failed to clone GoDo repository. Please install it manually from: https://github.com/0xStr1k3r/GoDo"
+                fi
+                # Clean up temp dir and return back
+                rm -rf "$TEMP_DIR"
+                cd "$PROJECT_DIR"
+            fi
+        fi
+    fi
+}
+
+# Build production bundle
+build_project() {
+    print_header "Building Client & Server"
+    print_info "Compiling production assets..."
+    npm run build
+    print_success "Build completed."
+}
+
+# Run the app interactively (if requested)
 run_app() {
     print_header "Running Application"
-    
-    read -p "Select mode to run:
-    1) Development mode (npm run dev)
-    2) Production mode (npm run build && npm start)
-    3) Skip running (just install)
-    
-    Enter choice (1-3): " choice
+    echo -e "How would you like to run the assistant now?"
+    echo "1) Start in background via Systemd daemon (Recommended)"
+    echo "2) Run in terminal foreground (Development mode)"
+    echo "3) Exit setup (Keep running in background)"
+    read -p "Select option (1-3): " choice
     
     case $choice in
         1)
-            print_info "Starting development server..."
-            print_info "The app will be available at http://localhost:5173"
-            npm run dev
+            print_info "Ensuring systemd user service is running..."
+            export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+            export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
+            systemctl --user restart nexus-assistant.service
+            print_success "Background daemon is active!"
+            echo "Access the assistant web UI at: http://localhost:3000"
             ;;
         2)
-            print_info "Building for production..."
-            npm run build
-            print_success "Build completed"
-            print_info "Starting production server..."
-            npm start
+            print_info "Stopping background service to release ports..."
+            export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+            export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
+            systemctl --user stop nexus-assistant.service || true
+            print_info "Starting dev server..."
+            npm run dev
             ;;
         3)
-            print_success "Installation complete! To run the app:"
-            echo ""
-            echo "  Development mode:"
-            echo "    npm run dev"
-            echo ""
-            echo "  Production mode:"
-            echo "    npm run build"
-            echo "    npm start"
-            echo ""
+            print_success "Setup complete! Assistant is running in the background."
+            echo "Access the assistant web UI at: http://localhost:3000"
             ;;
         *)
-            print_error "Invalid choice"
-            exit 1
+            print_warning "Invalid option, exiting setup."
             ;;
     esac
 }
 
-# Cleanup
-cleanup_build() {
-    print_header "Cleaning Build Artifacts"
-    npm run clean 2>/dev/null || true
-    print_success "Build artifacts cleaned"
-}
-
-# Help text
+# Show help
 show_help() {
-    cat << EOF
-${BLUE}Nexus OS Voice Assistant - Installation Script${NC}
-
-USAGE:
-    ./install.sh [OPTION]
-
-OPTIONS:
-    install     Install dependencies only
-    dev         Install and run in development mode
-    build       Install and build for production
-    clean       Clean build artifacts
-    help        Show this help message
-
-EXAMPLES:
-    ./install.sh install    # Install dependencies
-    ./install.sh dev        # Install and run development server
-    ./install.sh build      # Install and build for production
-    ./install.sh           # Interactive mode (asks for each step)
-
-ENVIRONMENT VARIABLES:
-    You need to set the following in .env:
-    - GEMINI_API_KEY: Your Google Gemini API key
-    - APP_URL: Your application URL (for development, typically http://localhost:5173)
-
-GETTING STARTED:
-    1. Clone the repository
-    2. Run: ./install.sh
-    3. Follow the interactive prompts
-    4. Update .env with your API keys
-    5. Start developing!
-
-For more information, see README.md
-EOF
+    echo -e "${BLUE}Nexus OS Voice Assistant Installer${NC}"
+    echo ""
+    echo "USAGE:"
+    echo "    ./install.sh [OPTION]"
+    echo ""
+    echo "OPTIONS:"
+    echo "    install      Run dependency and permissions installer"
+    echo "    dev          Run local development server directly"
+    echo "    build        Install and compile code bundle"
+    echo "    service      Configure and start the background systemd service"
+    echo "    clean        Clean build files"
+    echo "    help         Show this help message"
+    echo ""
 }
 
-##############################################################################
-# Main Script
-##############################################################################
-
+# Main Execution Flow
 main() {
-    # Get the directory where the script is located
     SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
     cd "$SCRIPT_DIR"
     
-    print_header "Nexus OS Voice Assistant - Setup"
+    check_not_root
     
     case "${1:-interactive}" in
         install)
-            check_nodejs
+            check_prerequisites
             install_dependencies
             setup_env
-            print_success "Installation complete!"
+            setup_permissions_and_service
+            setup_godo_integration
+            build_project
+            print_success "Installation successfully completed!"
             ;;
         dev)
-            check_nodejs
+            check_prerequisites
             install_dependencies
             setup_env
-            print_success "Starting development server..."
             npm run dev
             ;;
         build)
-            check_nodejs
+            check_prerequisites
             install_dependencies
             setup_env
             build_project
-            print_success "Build complete! To run in production:"
-            echo "  npm start"
+            ;;
+        service)
+            setup_permissions_and_service
             ;;
         clean)
-            cleanup_build
+            npm run clean 2>/dev/null || true
+            print_success "Clean complete."
             ;;
         help|-h|--help)
             show_help
             ;;
         *)
-            check_nodejs
+            # Interactive Mode
+            print_header "Nova OS Assistant Installer"
+            check_prerequisites
             install_dependencies
             setup_env
+            setup_permissions_and_service
+            setup_godo_integration
+            build_project
             run_app
             ;;
     esac
 }
 
-# Run main function
 main "$@"
