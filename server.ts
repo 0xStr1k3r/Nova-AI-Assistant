@@ -321,13 +321,22 @@ async function startServer() {
 
     const memoryContext = formatMemoryForPrompt(db.memory);
 
+    const integrations = db.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "" };
+    let integrationsPrompt = "";
+    if (integrations.godoEnabled) {
+      integrationsPrompt += `\n- GoDo CLI Task Manager is ACTIVE. You can view, add, or complete tasks by running "godo list", "godo add 'description'", or "godo complete <id>" via runLinuxCommand.`;
+    }
+    if (integrations.obsidianEnabled && integrations.obsidianPath) {
+      integrationsPrompt += `\n- Obsidian Notes Vault is ACTIVE at path: "${integrations.obsidianPath}". You can query, read, create, update, or search markdown notes inside this folder using standard shell commands (grep, cat, echo, find) via runLinuxCommand.`;
+    }
+
     const assistantName = db.wakeWord.charAt(0).toUpperCase() + db.wakeWord.slice(1);
     const systemInstruction = `${activeMode.instruction}
 
 IDENTITY: Your name is ${assistantName}. You are speaking to ${userName}.
 CAPABILITIES:
 - You have the searchWeb tool to query the internet, and the fetchPage tool to read specific web pages. You have full internet and web access via these tools. Use them to answer search queries.
-- You have the runLinuxCommand tool to run bash commands on your host system. You have full system access (view, read, write, and manage local files, folders, and check system status) via this tool.
+- You have the runLinuxCommand tool to run bash commands on your host system. Since the assistant daemon runs as a background service with root privileges, you have complete administrative access to all files, directories, and commands across the entire system. Your execution of commands and system interactions must be guided by the selected operating mode (some modes restrict tool/command usage, while others grant unrestricted access).${integrationsPrompt}
 VOICE RULES (non-negotiable):
 - Max 2-3 SHORT sentences per response. You are being spoken aloud.
 - NEVER say "Is there anything else I can help you with?" or any variant of that. EVER.

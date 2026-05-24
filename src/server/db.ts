@@ -32,6 +32,12 @@ export interface VoiceProfile {
   sampleRate: number;
 }
 
+export interface IntegrationsConfig {
+  godoEnabled: boolean;
+  obsidianEnabled: boolean;
+  obsidianPath: string;
+}
+
 export interface NovaConfig {
   wakeWord: string;
   userName: string;
@@ -42,6 +48,7 @@ export interface NovaConfig {
   voiceResponseMode: "all" | "user";
   userVoiceProfiles: VoiceProfile[];
   greetingPhrase?: string;
+  integrations?: IntegrationsConfig;
 }
 
 
@@ -153,6 +160,11 @@ const defaultConfig: NovaConfig = {
   voiceResponseMode: "all",
   userVoiceProfiles: [],
   greetingPhrase: "Hey {name}!",
+  integrations: {
+    godoEnabled: false,
+    obsidianEnabled: false,
+    obsidianPath: "",
+  },
 };
 
 // ─── DB Operations ────────────────────────────────────────────────────────────
@@ -212,6 +224,14 @@ export function getDb(): NovaConfig {
         );
       }
 
+
+      if (!merged.integrations) {
+        merged.integrations = {
+          godoEnabled: false,
+          obsidianEnabled: false,
+          obsidianPath: "",
+        };
+      }
 
       if (envWakeWord) merged.wakeWord = envWakeWord;
       if (envUserName) merged.userName = envUserName;

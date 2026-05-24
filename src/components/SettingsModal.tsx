@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import {
   X, Save, Plus, Trash, Brain, Mic, Sliders, User,
   Volume2, ShieldCheck, ShieldOff, Check, Fingerprint,
-  Wand2, ChevronRight, AlertCircle, Wifi, WifiOff,
+  Wand2, ChevronRight, AlertCircle, Wifi, WifiOff, Link2,
 } from "lucide-react";
 import { getVoiceSpectrum, calculateRMS, VoiceProfile } from "../utils/voiceProfile";
 
@@ -33,6 +33,11 @@ export type ConfigType = {
   voiceResponseMode: "all" | "user";
   userVoiceProfiles: VoiceProfile[];
   greetingPhrase?: string;
+  integrations?: {
+    godoEnabled: boolean;
+    obsidianEnabled: boolean;
+    obsidianPath: string;
+  };
 };
 
 const VOICE_OPTIONS = [
@@ -67,7 +72,7 @@ export default function SettingsModal({
   setConfig: (cfg: ConfigType) => void;
 }) {
   const [local, setLocal]               = useState<ConfigType | null>(null);
-  const [tab, setTab]                   = useState<"profile" | "voice" | "modes" | "memory">("profile");
+  const [tab, setTab]                   = useState<"profile" | "voice" | "modes" | "integrations" | "memory">("profile");
   const [saving, setSaving]             = useState(false);
   const [saved, setSaved]               = useState(false);
   const [recordingVoice, setRecordingVoice] = useState(false);
@@ -264,10 +269,11 @@ export default function SettingsModal({
   };
 
   const tabs = [
-    { id: "profile", label: "Profile", icon: User },
-    { id: "voice",   label: "Voice",   icon: Volume2 },
-    { id: "modes",   label: "Modes",   icon: Sliders },
-    { id: "memory",  label: "Memory",  icon: Brain },
+    { id: "profile",      label: "Profile",      icon: User },
+    { id: "voice",        label: "Voice",        icon: Volume2 },
+    { id: "modes",        label: "Modes",        icon: Sliders },
+    { id: "integrations", label: "Integrations", icon: Link2 },
+    { id: "memory",       label: "Memory",       icon: Brain },
   ] as const;
 
   const memoryByCategory = local.memory.reduce((acc, m) => {
@@ -807,6 +813,158 @@ export default function SettingsModal({
                     </div>
                   );
                 })}
+              </div>
+            </div>
+          )}
+
+          {/* ════ INTEGRATIONS TAB ══════════════════════════════════════ */}
+          {tab === "integrations" && (
+            <div className="space-y-5">
+              <div>
+                <p className="text-sm font-semibold text-white">App Integrations</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Connect third-party tools and applications to expand Nova's capabilities.
+                </p>
+              </div>
+
+              {/* GoDo Integration */}
+              <div
+                className="p-4 rounded-2xl space-y-3"
+                style={{
+                  background: "rgba(255, 255, 255, 0.02)",
+                  border: "1px solid rgba(255, 255, 255, 0.05)"
+                }}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm"
+                      style={{
+                        background: local.integrations?.godoEnabled
+                          ? "rgba(139,92,246,0.15)"
+                          : "rgba(255,255,255,0.03)",
+                        border: local.integrations?.godoEnabled
+                          ? "1px solid rgba(139,92,246,0.3)"
+                          : "1px solid rgba(255,255,255,0.06)",
+                        color: local.integrations?.godoEnabled ? "#a78bfa" : "#64748b"
+                      }}
+                    >
+                      GD
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-white">GoDo Task Manager</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">
+                        Manage local tasks and TODO lists via the GoDo CLI.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const integrations = local.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "" };
+                      setLocal({
+                        ...local,
+                        integrations: {
+                          ...integrations,
+                          godoEnabled: !integrations.godoEnabled
+                        }
+                      });
+                    }}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      local.integrations?.godoEnabled ? "bg-violet-600" : "bg-slate-700"
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        local.integrations?.godoEnabled ? "translate-x-4" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              {/* Obsidian Integration */}
+              <div
+                className="p-4 rounded-2xl space-y-4"
+                style={{
+                  background: "rgba(255, 255, 255, 0.02)",
+                  border: "1px solid rgba(255, 255, 255, 0.05)"
+                }}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm"
+                      style={{
+                        background: local.integrations?.obsidianEnabled
+                          ? "rgba(139,92,246,0.15)"
+                          : "rgba(255,255,255,0.03)",
+                        border: local.integrations?.obsidianEnabled
+                          ? "1px solid rgba(139,92,246,0.3)"
+                          : "1px solid rgba(255,255,255,0.06)",
+                        color: local.integrations?.obsidianEnabled ? "#a78bfa" : "#64748b"
+                      }}
+                    >
+                      OB
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-white">Obsidian Notes Vault</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">
+                        Read, write, search, and update Obsidian vault markdown files.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const integrations = local.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "" };
+                      setLocal({
+                        ...local,
+                        integrations: {
+                          ...integrations,
+                          obsidianEnabled: !integrations.obsidianEnabled
+                        }
+                      });
+                    }}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      local.integrations?.obsidianEnabled ? "bg-violet-600" : "bg-slate-700"
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        local.integrations?.obsidianEnabled ? "translate-x-4" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {local.integrations?.obsidianEnabled && (
+                  <div className="space-y-1.5 pt-2 border-t border-white/5 animate-slide-up">
+                    <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Obsidian Vault Path</label>
+                    <input
+                      type="text"
+                      value={local.integrations?.obsidianPath || ""}
+                      onChange={e => {
+                        const integrations = local.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "" };
+                        setLocal({
+                          ...local,
+                          integrations: {
+                            ...integrations,
+                            obsidianPath: e.target.value
+                          }
+                        });
+                      }}
+                      className="w-full px-3.5 py-2 rounded-xl text-xs text-white focus:outline-none transition-all font-mono"
+                      style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.09)" }}
+                      placeholder="/home/chiru/Documents/ObsidianVault"
+                      onFocus={e => (e.currentTarget.style.border = "1px solid rgba(139,92,246,0.5)")}
+                      onBlur={e => (e.currentTarget.style.border = "1px solid rgba(255,255,255,0.09)")}
+                    />
+                    <p className="text-[10px] text-slate-500 mt-1.5 leading-relaxed">
+                      Absolute directory path to your active Obsidian Vault directory.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           )}

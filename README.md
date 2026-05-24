@@ -101,14 +101,46 @@ When Nova is in a mode that permits system command execution (such as **Assistan
 
 ---
 
+## Obsidian Notes Vault Integration
+
+Nova supports integration with your local **Obsidian Notes Vault**. Since Obsidian vaults are directories of standard Markdown files, Nova can manage your notes hands-free.
+
+### Setting Up Obsidian
+1. Click the **Gear icon** in the UI to open the Settings panel.
+2. Navigate to the **Integrations** tab.
+3. Toggle the **Obsidian Notes Vault** integration to **ON**.
+4. Enter the absolute path to your Obsidian vault directory (e.g. `/home/chiru/Documents/ObsidianVault`).
+5. Click **Save**.
+
+### How to Use
+When the integration is enabled, Nova will be aware of your vault directory. If in a mode that permits system command execution, you can voice-command note operations:
+* **"Nova, list my recent notes"** -> Lists note files inside your vault directory.
+* **"Search my vault for ideas about artificial intelligence"** -> Uses `grep` or search tools inside your vault path to find matches.
+* **"Create a new note named Shopping List and add buy bread"** -> Creates a Markdown file with specified content in your vault.
+* **"Read my note about project specs"** -> Locates and prints the contents of the note.
+
+---
+
+## System Privileges & Security
+
+### Background Service Execution
+Nova runs as a background service daemon. Since the service runs with **root privileges**, it has full administrative access to your local machine's filesystem, directories, and executing processes. This allows it to read, write, and manage any files or folders, and run system-level commands as root.
+
+### Gated Command Execution by Mode
+Although the background service holds administrative/root privileges, command execution is strictly gated by the **Operating Mode** you select in settings:
+* 🛡️ **Assistant / Sysadmin / Dev / Unrestricted**: Grant active access to system commands via `runLinuxCommand`. Destructive or dangerous commands are blocked or validated in Assistant mode, but allowed in Unrestricted and Sysadmin modes.
+* 🔒 **Focus / Deep Dive / Creative / Tutor**: Do **not** allow any system command or file execution, ensuring sandboxed interaction when you are just asking questions or learning.
+
+---
+
 ## Daemon & Service Management
 
-The installer configures a **Systemd User Service** so Nova can run in the background.
+The installer configures a **Systemd User Service** (`nexus-assistant.service`) so Nova can run in the background.
 
 | Action | Command |
 | :--- | :--- |
-| **Check Status** | `systemctl --user status nova-assistant.service` |
-| **Start Service** | `systemctl --user start nova-assistant.service` |
-| **Stop Service** | `systemctl --user stop nova-assistant.service` |
-| **Restart Service** | `systemctl --user restart nova-assistant.service` |
-| **View Live Logs** | `journalctl --user -u nova-assistant.service -f` |
+| **Check Status** | `systemctl --user status nexus-assistant.service` |
+| **Start Service** | `systemctl --user start nexus-assistant.service` |
+| **Stop Service** | `systemctl --user stop nexus-assistant.service` |
+| **Restart Service** | `systemctl --user restart nexus-assistant.service` |
+| **View Live Logs** | `journalctl --user -u nexus-assistant.service -f` |
