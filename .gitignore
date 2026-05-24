@@ -74,3 +74,4 @@ Thumbs.db
 .env.*.local
 server.js
 server.cjs
+.antigravity/
