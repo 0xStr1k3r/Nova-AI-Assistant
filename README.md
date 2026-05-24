@@ -19,13 +19,16 @@ Run the unified installer to handle Node dependencies, environment variables, sy
 
 ```bash
 # 1. Clone the repository
-git clone <repository-url>
-cd Nexus-OS-Voice-Assistant
+git clone https://github.com/0xStr1k3r/Nova-AI-Assistant.git
+cd Nova-AI-Assistant
 
-# 2. Grant execution permissions
+# 2. Setup environment variables
+mv .env.example .env
+
+# 3. Grant execution permissions
 chmod +x install.sh
 
-# 3. Run the installer
+# 4. Run the installer
 ./install.sh
 ```
 
@@ -63,8 +66,8 @@ The installer configures a **Systemd User Service** so Nova can run in the backg
 
 | Action | Command |
 | :--- | :--- |
-| **Check Status** | `systemctl --user status nexus-assistant.service` |
-| **Start Service** | `systemctl --user start nexus-assistant.service` |
-| **Stop Service** | `systemctl --user stop nexus-assistant.service` |
-| **Restart Service** | `systemctl --user restart nexus-assistant.service` |
-| **View Live Logs** | `journalctl --user -u nexus-assistant.service -f` |
+| **Check Status** | `systemctl --user status nova-assistant.service` |
+| **Start Service** | `systemctl --user start nova-assistant.service` |
+| **Stop Service** | `systemctl --user stop nova-assistant.service` |
+| **Restart Service** | `systemctl --user restart nova-assistant.service` |
+| **View Live Logs** | `journalctl --user -u nova-assistant.service -f` |

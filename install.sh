@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ##############################################################################
-# Nexus OS Voice Assistant - Consolidated Installation & Setup Script
+# Nova AI Assistant - Consolidated Installation & Setup Script
 # This script handles dependencies, permissions, and background daemon setup.
 ##############################################################################
 
@@ -128,9 +128,9 @@ setup_permissions_and_service() {
     
     # 2. Passwordless sudo for voice commands
     print_info "Configuring passwordless sudo for voice assistant command execution..."
-    SUDOERS_FILE="/etc/sudoers.d/nexus-voice-assistant"
+    SUDOERS_FILE="/etc/sudoers.d/nova-voice-assistant"
     sudo bash -c "cat << 'EOF' > $SUDOERS_FILE
-# Nexus OS Voice Assistant command execution rule
+# Nova AI Assistant command execution rule
 $USER_NAME ALL=(ALL) NOPASSWD: ALL
 EOF"
     sudo chmod 0440 "$SUDOERS_FILE"
@@ -149,9 +149,9 @@ EOF"
     
     mkdir -p "$SYSTEMD_USER_DIR"
     
-    cat << EOF > "$SYSTEMD_USER_DIR/nexus-assistant.service"
+    cat << EOF > "$SYSTEMD_USER_DIR/nova-assistant.service"
 [Unit]
-Description=Nexus OS Voice Assistant Daemon
+Description=Nova AI Assistant Daemon
 After=network.target sound.target
 
 [Service]
@@ -174,8 +174,8 @@ EOF
     export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u $USER_NAME)/bus"
     
     systemctl --user daemon-reload
-    systemctl --user enable nexus-assistant.service
-    systemctl --user restart nexus-assistant.service
+    systemctl --user enable nova-assistant.service
+    systemctl --user restart nova-assistant.service
     
     print_success "System permissions and background service configured successfully!"
 }
@@ -272,7 +272,7 @@ run_app() {
             print_info "Ensuring systemd user service is running..."
             export XDG_RUNTIME_DIR="/run/user/$(id -u)"
             export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
-            systemctl --user restart nexus-assistant.service
+            systemctl --user restart nova-assistant.service
             print_success "Background daemon is active!"
             echo "Access the assistant web UI at: http://localhost:3000"
             ;;
@@ -280,7 +280,7 @@ run_app() {
             print_info "Stopping background service to release ports..."
             export XDG_RUNTIME_DIR="/run/user/$(id -u)"
             export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
-            systemctl --user stop nexus-assistant.service || true
+            systemctl --user stop nova-assistant.service || true
             print_info "Starting dev server..."
             npm run dev
             ;;
@@ -296,7 +296,7 @@ run_app() {
 
 # Show help
 show_help() {
-    echo -e "${BLUE}Nexus OS Voice Assistant Installer${NC}"
+    echo -e "${BLUE}Nova AI Assistant Installer${NC}"
     echo ""
     echo "USAGE:"
     echo "    ./install.sh [OPTION]"

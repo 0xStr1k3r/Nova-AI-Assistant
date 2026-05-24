@@ -34,8 +34,6 @@ export interface NovaConfig {
   voiceName: string;
 }
 
-// Alias for backwards compatibility
-export type NexusConfig = NovaConfig;
 
 // ─── Default Modes ────────────────────────────────────────────────────────────
 export const DEFAULT_MODES: Mode[] = [

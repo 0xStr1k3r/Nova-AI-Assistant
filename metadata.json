@@ -1,1 +1,1 @@
-{"name":"Nexus OS Voice Assistant","description":"A system-wide AI voice assistant powered by Gemini Live API.","requestFramePermissions":["microphone"],"majorCapabilities":["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]}
+{"name":"Nova AI Assistant","description":"A system-wide AI voice assistant powered by Gemini Live API.","requestFramePermissions":["microphone"],"majorCapabilities":["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]}
