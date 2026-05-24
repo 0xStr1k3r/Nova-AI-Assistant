@@ -341,262 +341,289 @@ export default function App() {
       </AnimatePresence>
 
       {/* Main App */}
-      <div className="relative z-10 w-full max-w-5xl h-screen max-h-[800px] flex flex-col p-4 sm:p-6 gap-4">
+      <div className="w-full h-screen gradient-bg overflow-hidden flex flex-col relative">
+        
+        {/* Animated background gradient overlay */}
+        <div className="absolute inset-0 opacity-30 pointer-events-none">
+          <div className="absolute top-0 left-1/4 w-96 h-96 bg-violet-600 rounded-full blur-3xl opacity-20 animate-pulse" />
+          <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-cyan-600 rounded-full blur-3xl opacity-20 animate-pulse" style={{ animationDelay: "1s" }} />
+        </div>
 
-        {/* Top Bar */}
-        <div className="flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-violet-500/15 border border-violet-500/30 flex items-center justify-center">
-              <Zap className="w-4 h-4 text-violet-400" />
-            </div>
-            <div>
-              <h1 className="text-base font-bold text-white leading-none">Nova</h1>
-              <p className="text-[10px] text-slate-500 font-mono mt-0.5">AI Voice Assistant · {activeModeName}</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {/* Wake word toggle */}
-            <motion.button
-              id="wake-toggle"
-              onClick={toggleWakeWord}
-              title="Toggle wake word listening"
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium transition-all duration-200 ${
-                isWakeWordListening
-                  ? "bg-violet-500/20 border border-violet-500/40 text-violet-300"
-                  : "bg-white/5 border border-white/10 text-slate-500 hover:text-slate-300"
-              }`}
-              whileTap={{ scale: 0.95 }}
-            >
-              {isWakeWordListening
-                ? <Mic className="w-3 h-3 animate-pulse" />
-                : <MicOff className="w-3 h-3" />}
-              <span>{isWakeWordListening ? "Listening" : "Paused"}</span>
-            </motion.button>
-
-            {/* Status pill */}
-            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium border ${
-              isConnected
-                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
-                : isConnecting
-                ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
-                : "bg-white/5 border-white/10 text-slate-500"
-            }`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${
-                isConnected ? "bg-emerald-400 animate-pulse"
-                : isConnecting ? "bg-amber-400 animate-pulse"
-                : "bg-slate-600"
-              }`} />
-              {isConnected ? "Active" : isConnecting ? "Connecting" : "Standby"}
+        {/* Header */}
+        <div className="relative z-20 border-b border-white/10 backdrop-blur-sm px-6 py-4">
+          <div className="flex items-center justify-between">
+            
+            {/* Logo and title */}
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-violet-600 flex items-center justify-center shadow-lg shadow-violet-500/30">
+                <Zap className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h1 className="text-lg font-bold text-white leading-none">Nova</h1>
+                <p className="text-xs text-slate-400 font-mono mt-1">AI Voice Assistant · {activeModeName}</p>
+              </div>
             </div>
 
-            {/* Settings */}
-            <motion.button
-              id="settings-btn"
-              onClick={() => setShowSettings(true)}
-              className="w-8 h-8 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-all"
-              whileTap={{ scale: 0.9 }}
-            >
-              <Settings className="w-4 h-4" />
-            </motion.button>
+            {/* Right controls */}
+            <div className="flex items-center gap-3">
+              {/* Wake word toggle */}
+              <motion.button
+                id="wake-toggle"
+                onClick={toggleWakeWord}
+                title="Toggle wake word listening"
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl font-medium transition-all duration-300 text-sm ${
+                  isWakeWordListening
+                    ? "bg-gradient-to-r from-violet-500 to-violet-600 border border-violet-400 text-white shadow-lg shadow-violet-500/30"
+                    : "bg-white/5 border border-white/10 text-slate-400 hover:text-slate-200 hover:bg-white/10"
+                }`}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                {isWakeWordListening
+                  ? <Mic className="w-4 h-4 animate-pulse" />
+                  : <MicOff className="w-4 h-4" />}
+                <span>{isWakeWordListening ? "Listening" : "Paused"}</span>
+              </motion.button>
+
+              {/* Status indicator */}
+              <div className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border transition-all ${
+                isConnected
+                  ? "bg-gradient-to-r from-emerald-500/20 to-teal-500/20 border-emerald-500/40 text-emerald-300 shadow-lg shadow-emerald-500/20"
+                  : isConnecting
+                  ? "bg-gradient-to-r from-amber-500/20 to-yellow-500/20 border-amber-500/40 text-amber-300 shadow-lg shadow-amber-500/20"
+                  : "bg-white/5 border-white/10 text-slate-500"
+              }`}>
+                <span className={`w-2 h-2 rounded-full ${
+                  isConnected ? "bg-emerald-400 animate-pulse"
+                  : isConnecting ? "bg-amber-400 animate-pulse"
+                  : "bg-slate-600"
+                }`} />
+                <span>{isConnected ? "Active" : isConnecting ? "Connecting" : "Standby"}</span>
+              </div>
+
+              {/* Settings button */}
+              <motion.button
+                id="settings-btn"
+                onClick={() => setShowSettings(true)}
+                className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 hover:text-white hover:bg-violet-500/20 hover:border-violet-500/30 transition-all duration-300"
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
+              >
+                <Settings className="w-5 h-5" />
+              </motion.button>
+            </div>
           </div>
         </div>
 
         {/* Main content */}
-        <div className="flex-1 grid grid-cols-1 lg:grid-cols-5 gap-4 min-h-0">
+        <div className="relative z-10 flex-1 grid grid-cols-1 lg:grid-cols-5 gap-6 min-h-0 p-6 overflow-hidden">
 
           {/* Left: Orb panel */}
-          <div className="lg:col-span-3 glass rounded-3xl flex flex-col items-center justify-center relative overflow-hidden p-8">
+          <div className="lg:col-span-3 glass-strong rounded-3xl flex flex-col items-center justify-center relative overflow-hidden p-8 hover-lift">
 
             {/* Ambient ring decoration */}
             <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-              <div className={`w-[420px] h-[420px] rounded-full border border-violet-500/5 ring-1 ${isConnected ? "opacity-100" : "opacity-40"}`} />
-              <div className={`absolute w-[330px] h-[330px] rounded-full border border-indigo-500/8 ring-2 ${isConnected ? "opacity-100" : "opacity-30"}`} />
-              <div className={`absolute w-[240px] h-[240px] rounded-full border border-violet-500/10 ring-3 ${isConnected ? "opacity-100" : "opacity-20"}`} />
+             <div className={`w-[420px] h-[420px] rounded-full border border-violet-500/10 ring-1 ${isConnected ? "opacity-100" : "opacity-50"} transition-opacity duration-700`} />
+             <div className={`absolute w-[330px] h-[330px] rounded-full border border-indigo-500/15 ring-2 ${isConnected ? "opacity-100" : "opacity-40"} transition-opacity duration-700`} />
+             <div className={`absolute w-[240px] h-[240px] rounded-full border border-violet-500/20 ring-3 ${isConnected ? "opacity-100" : "opacity-30"} transition-opacity duration-700`} />
             </div>
 
             {/* Central Orb */}
             <div className="relative z-10 orb-float">
-              <motion.button
-                id="main-orb"
-                onClick={isConnected || isConnecting ? disconnect : connect}
-                className={`w-40 h-40 rounded-full flex items-center justify-center relative transition-all duration-700 ${
-                  isConnected ? "orb-active" : "orb-standby"
-                }`}
-                style={{
-                  background: isConnected
-                    ? "radial-gradient(circle at 30% 30%, rgba(52,211,153,0.3), rgba(16,185,129,0.15))"
-                    : isConnecting
-                    ? "radial-gradient(circle at 30% 30%, rgba(251,191,36,0.2), rgba(245,158,11,0.1))"
-                    : "radial-gradient(circle at 30% 30%, rgba(139,92,246,0.3), rgba(99,102,241,0.15))",
-                  border: isConnected
-                    ? "1px solid rgba(52,211,153,0.3)"
-                    : isConnecting
-                    ? "1px solid rgba(251,191,36,0.3)"
-                    : "1px solid rgba(139,92,246,0.3)",
-                }}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                {/* Inner orb core */}
-                <div
-                  className="w-28 h-28 rounded-full flex items-center justify-center"
-                  style={{
-                    background: "radial-gradient(circle at 35% 35%, rgba(255,255,255,0.08), rgba(0,0,0,0.4))",
-                    border: "1px solid rgba(255,255,255,0.06)",
-                  }}
-                >
-                  <AnimatePresence mode="wait">
-                    {isConnecting ? (
-                      <motion.div key="connecting" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}>
-                        <Activity className="w-10 h-10 text-amber-400 animate-spin" />
-                      </motion.div>
-                    ) : isConnected ? (
-                      <motion.div key="active" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="flex gap-1 items-end h-9">
-                        {["bar-1","bar-2","bar-3","bar-4","bar-5","bar-6","bar-7"].map((b, i) => (
-                          <div key={i} className={`w-1.5 bg-emerald-400 rounded-full ${b}`} style={{ minHeight: "4px" }} />
-                        ))}
-                      </motion.div>
-                    ) : (
-                      <motion.div key="idle" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}>
-                        <Mic className="w-10 h-10 text-violet-300" />
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              </motion.button>
+             <motion.button
+               id="main-orb"
+               onClick={isConnected || isConnecting ? disconnect : connect}
+               className={`w-48 h-48 rounded-full flex items-center justify-center relative transition-all duration-700 shadow-2xl`}
+               style={{
+                 background: isConnected
+                   ? "radial-gradient(circle at 30% 30%, rgba(52,211,153,0.4), rgba(16,185,129,0.2))"
+                   : isConnecting
+                   ? "radial-gradient(circle at 30% 30%, rgba(251,191,36,0.3), rgba(245,158,11,0.15))"
+                   : "radial-gradient(circle at 30% 30%, rgba(139,92,246,0.35), rgba(99,102,241,0.2))",
+                 border: isConnected
+                   ? "2px solid rgba(52,211,153,0.5)"
+                   : isConnecting
+                   ? "2px solid rgba(251,191,36,0.4)"
+                   : "2px solid rgba(139,92,246,0.4)",
+                 boxShadow: isConnected
+                   ? "0 0 60px 20px rgba(52,211,153,0.15)"
+                   : "0 0 40px 15px rgba(139,92,246,0.15)"
+               }}
+               whileHover={{ scale: 1.08 }}
+               whileTap={{ scale: 0.92 }}
+             >
+               {/* Inner orb core */}
+               <div
+                 className="w-32 h-32 rounded-full flex items-center justify-center"
+                 style={{
+                   background: "radial-gradient(circle at 35% 35%, rgba(255,255,255,0.1), rgba(0,0,0,0.3))",
+                   border: "2px solid rgba(139,92,246,0.2)",
+                   backdropFilter: "blur(10px)"
+                 }}
+               >
+                 <AnimatePresence mode="wait">
+                   {isConnecting ? (
+                     <motion.div key="connecting" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}>
+                       <Activity className="w-12 h-12 text-amber-300 animate-spin" />
+                     </motion.div>
+                   ) : isConnected ? (
+                     <motion.div key="active" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="flex gap-1.5 items-end h-10">
+                       {["bar-1","bar-2","bar-3","bar-4","bar-5","bar-6","bar-7"].map((b, i) => (
+                         <div key={i} className={`w-2 bg-gradient-to-t from-emerald-400 to-cyan-300 rounded-full ${b}`} style={{ minHeight: "6px" }} />
+                       ))}
+                     </motion.div>
+                   ) : (
+                     <motion.div key="idle" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}>
+                       <Mic className="w-12 h-12 text-violet-300" />
+                     </motion.div>
+                   )}
+                 </AnimatePresence>
+               </div>
+             </motion.button>
             </div>
 
             {/* Status text */}
-            <div className="mt-10 text-center z-10 space-y-1">
-              <AnimatePresence mode="wait">
-                <motion.p
-                  key={status}
-                  className="text-xl font-light text-white"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                >
-                  {isConnected
-                    ? "Listening, Chiru..."
-                    : isConnecting
-                    ? "Waking up..."
-                    : isWakeWordListening
-                    ? `Say "${config?.wakeWord || 'nova'}" to start`
-                    : "Nova is paused"}
-                </motion.p>
-              </AnimatePresence>
+            <div className="mt-10 text-center z-10 space-y-2">
+             <AnimatePresence mode="wait">
+               <motion.p
+                 key={status}
+                 className="text-2xl font-semibold text-white"
+                 initial={{ opacity: 0, y: 10 }}
+                 animate={{ opacity: 1, y: 0 }}
+                 exit={{ opacity: 0, y: -10 }}
+                 transition={{ duration: 0.3 }}
+               >
+                 {isConnected
+                   ? "Listening, Chiru..."
+                   : isConnecting
+                   ? "Waking up..."
+                   : isWakeWordListening
+                   ? `Say "${config?.wakeWord || 'nova'}"`
+                   : "Nova is ready"}
+               </motion.p>
+             </AnimatePresence>
 
-              <p className="text-[11px] text-slate-500 font-mono tracking-wider uppercase">
-                {isConnected
-                  ? `Session ${formatTime(sessionTime)} · ${activeModeName}`
-                  : isWakeWordListening
-                  ? "Wake word detection active"
-                  : "Click orb to connect manually"}
-              </p>
+             <p className="text-xs text-slate-400 font-mono tracking-wider uppercase">
+               {isConnected
+                 ? `Session ${formatTime(sessionTime)} · ${activeModeName}`
+                 : isWakeWordListening
+                 ? "Wake word detection active"
+                 : "Click orb to connect"}
+             </p>
             </div>
 
             {/* Hint text */}
             {!isConnected && (
-              <p className="absolute bottom-5 text-[10px] text-slate-600 font-mono">
-                TAP ORB TO {isConnecting ? "CANCEL" : "CONNECT MANUALLY"}
-              </p>
+             <motion.p 
+               className="absolute bottom-6 text-xs text-slate-500 font-mono"
+               animate={{ opacity: [0.5, 1, 0.5] }}
+               transition={{ duration: 2, repeat: Infinity }}
+             >
+               TAP ORB TO {isConnecting ? "CANCEL" : "CONNECT"}
+             </motion.p>
             )}
           </div>
 
-          {/* Right: Activity log */}
-          <div className="lg:col-span-2 flex flex-col gap-3 min-h-0">
+          {/* Right: Activity log and stats */}
+          <div className="lg:col-span-2 flex flex-col gap-4 min-h-0">
 
             {/* Activity feed */}
-            <div className="flex-1 glass rounded-3xl p-5 flex flex-col min-h-0">
-              <div className="flex items-center justify-between mb-4 shrink-0">
-                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                  <Brain className="w-3 h-3 text-violet-400" />
-                  Activity Log
-                </span>
-                <span className="text-[10px] text-slate-600 font-mono">{logs.length} events</span>
-              </div>
+            <div className="flex-1 glass rounded-3xl p-6 flex flex-col min-h-0 hover-lift">
+             <div className="flex items-center justify-between mb-4 shrink-0">
+               <span className="text-xs font-bold text-slate-300 uppercase tracking-widest flex items-center gap-2">
+                 <div className="w-2 h-2 rounded-full bg-gradient-to-r from-violet-400 to-cyan-400" />
+                 Activity Log
+               </span>
+               <span className="text-xs text-slate-500 font-mono bg-white/5 px-2 py-1 rounded-lg">{logs.length}</span>
+             </div>
 
-              <div className="flex-1 overflow-y-auto space-y-2 min-h-0 pr-1">
-                {logs.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center text-slate-600 gap-2">
-                    <Brain className="w-8 h-8 opacity-30" />
-                    <p className="text-xs">No activity yet</p>
-                  </div>
-                ) : (
-                  logs.map((log, i) => (
-                    <motion.div
-                      key={i}
-                      initial={{ opacity: 0, x: 10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      className="flex items-start gap-2.5"
-                    >
-                      <div className={`w-1 rounded-full shrink-0 mt-1.5 ${
-                        log.type === "error" ? "bg-red-500 h-3"
-                        : log.type === "success" ? "bg-emerald-400 h-3"
-                        : log.type === "wake" ? "bg-violet-400 h-3"
-                        : "bg-slate-600 h-2"
-                      }`} />
-                      <p className={`text-xs leading-relaxed ${
-                        log.type === "error" ? "text-red-300"
-                        : log.type === "success" ? "text-emerald-300"
-                        : log.type === "wake" ? "text-violet-300 font-medium"
-                        : "text-slate-400"
-                      }`}>
-                        {log.msg}
-                      </p>
-                    </motion.div>
-                  ))
-                )}
-                <div ref={logsEndRef} />
-              </div>
+             <div className="flex-1 overflow-y-auto space-y-2 min-h-0 pr-2">
+               {logs.length === 0 ? (
+                 <div className="h-full flex flex-col items-center justify-center text-slate-600 gap-3">
+                   <Brain className="w-10 h-10 opacity-30" />
+                   <p className="text-sm">No activity yet</p>
+                 </div>
+               ) : (
+                 logs.map((log, i) => (
+                   <motion.div
+                     key={i}
+                     initial={{ opacity: 0, x: 15 }}
+                     animate={{ opacity: 1, x: 0 }}
+                     className="flex items-start gap-3 p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
+                   >
+                     <div className={`w-1.5 rounded-full shrink-0 mt-1.5 ${
+                       log.type === "error" ? "bg-red-500 h-3"
+                       : log.type === "success" ? "bg-emerald-400 h-3"
+                       : log.type === "wake" ? "bg-violet-400 h-3"
+                       : "bg-slate-600 h-2"
+                     }`} />
+                     <p className={`text-xs leading-relaxed font-medium ${
+                       log.type === "error" ? "text-red-300"
+                       : log.type === "success" ? "text-emerald-300"
+                       : log.type === "wake" ? "text-violet-300"
+                       : "text-slate-300"
+                     }`}>
+                       {log.msg}
+                     </p>
+                   </motion.div>
+                 ))
+               )}
+               <div ref={logsEndRef} />
+             </div>
             </div>
 
             {/* System status card */}
-            <div className="glass rounded-2xl p-4 shrink-0">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <p className="text-[10px] text-slate-600 uppercase tracking-widest mb-1">Mode</p>
-                  <p className="text-xs text-slate-300 font-medium">{activeModeName}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-slate-600 uppercase tracking-widest mb-1">Wake Word</p>
-                  <p className="text-xs text-violet-300 font-medium font-mono">"{config?.wakeWord || 'nova'}"</p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-slate-600 uppercase tracking-widest mb-1">Memory</p>
-                  <p className="text-xs text-slate-300 font-medium">{config?.memory?.length || 0} facts</p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-slate-600 uppercase tracking-widest mb-1">User</p>
-                  <p className="text-xs text-slate-300 font-medium">{config?.userName || 'User'}</p>
-                </div>
-              </div>
+            <div className="glass rounded-3xl p-6 shrink-0 hover-lift">
+             <h3 className="text-xs font-bold text-slate-300 uppercase tracking-widest mb-4 flex items-center gap-2">
+               <Activity className="w-3.5 h-3.5 text-violet-400" />
+               System Status
+             </h3>
+             <div className="grid grid-cols-2 gap-4">
+               <div className="bg-white/5 rounded-xl p-3 border border-white/10">
+                 <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">Mode</p>
+                 <p className="text-sm font-semibold text-white">{activeModeName}</p>
+               </div>
+               <div className="bg-white/5 rounded-xl p-3 border border-white/10">
+                 <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">Wake Word</p>
+                 <p className="text-sm font-semibold text-violet-300 font-mono">"{config?.wakeWord || 'nova'}"</p>
+               </div>
+               <div className="bg-white/5 rounded-xl p-3 border border-white/10">
+                 <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">Memory</p>
+                 <p className="text-sm font-semibold text-emerald-300">{config?.memory?.length || 0}</p>
+               </div>
+               <div className="bg-white/5 rounded-xl p-3 border border-white/10">
+                 <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">User</p>
+                 <p className="text-sm font-semibold text-white">{config?.userName || 'User'}</p>
+               </div>
+             </div>
             </div>
 
             {/* Power / disconnect button when active */}
             {isConnected && (
-              <motion.button
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                onClick={disconnect}
-                className="shrink-0 glass rounded-2xl p-3 flex items-center justify-center gap-2 text-red-400/70 hover:text-red-300 hover:bg-red-500/10 border border-red-500/10 hover:border-red-500/30 transition-all duration-200 text-sm font-medium"
-              >
-                <Power className="w-4 h-4" />
-                End Session
-              </motion.button>
+             <motion.button
+               initial={{ opacity: 0, y: 10 }}
+               animate={{ opacity: 1, y: 0 }}
+               onClick={disconnect}
+               className="shrink-0 glass rounded-3xl p-4 flex items-center justify-center gap-3 text-red-300 hover:text-red-100 hover:bg-red-500/20 border border-red-500/20 hover:border-red-500/40 transition-all duration-300 text-sm font-bold uppercase tracking-wider hover-lift"
+             >
+               <Power className="w-5 h-5" />
+               End Session
+             </motion.button>
             )}
           </div>
         </div>
 
         {/* Bottom bar */}
-        <div className="flex items-center justify-between shrink-0 px-1">
-          <div className="flex items-center gap-4 text-[10px] text-slate-600 font-mono uppercase tracking-widest">
-            <span>Nova v3.0</span>
+        <div className="relative z-20 border-t border-white/10 backdrop-blur-sm px-6 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-6 text-xs text-slate-500 font-mono uppercase tracking-widest">
+            <span className="flex items-center gap-2">
+             <span className="w-1 h-1 rounded-full bg-violet-400" />
+             Nova v3.0
+            </span>
             <span>Gemini Live API</span>
-            <span>BlackArch Linux</span>
+            <span>Modern UI</span>
           </div>
-          <div className="text-[10px] text-slate-600 font-mono">
+          <div className="text-xs text-slate-500 font-mono">
             {isConnected ? `● LIVE ${formatTime(sessionTime)}` : isWakeWordListening ? "○ STANDBY" : "◌ OFFLINE"}
           </div>
         </div>

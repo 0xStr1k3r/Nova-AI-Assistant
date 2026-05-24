@@ -1,0 +1,531 @@
+import "dotenv/config";
+import express from "express";
+import path from "path";
+import http from "http";
+import { WebSocketServer } from "ws";
+import { GoogleGenAI, LiveServerMessage, Modality, Type } from "@google/genai";
+import { createServer as createViteServer } from "vite";
+import { exec } from "child_process";
+import util from "util";
+import {
+  getDb, saveDb, addSmartMemory, clearMemory, formatMemoryForPrompt,
+  NovaConfig, MemoryEntry,
+} from "./src/server/db";
+
+const execAsync = util.promisify(exec);
+
+// ─── Smart Memory Extraction ──────────────────────────────────────────────────
+// Uses a lightweight Gemini call to extract meaningful facts from a session transcript
+async function extractAndSaveMemories(
+  ai: GoogleGenAI,
+  userName: string,
+  sessionLog: string[]
+) {
+  if (sessionLog.length < 2) return; // Nothing meaningful to extract
+
+  const transcript = sessionLog.join("\n");
+  const prompt = `You are a memory extraction system for an AI assistant named Nova.
+
+Extract ONLY the most important and reusable facts from this conversation transcript.
+These facts will be injected into future sessions to give Nova context about the user.
+
+EXTRACT if it reveals:
+- User's personal preferences (tools they like, how they work, what they dislike)
+- Facts about the user's system/setup that matter for future sessions
+- Recurring tasks or workflows the user does
+- Important personal context the user shared
+- Technical preferences or habits
+
+DO NOT EXTRACT:
+- Generic questions and answers
+- One-off commands with no lasting significance
+- Errors or failures that aren't pattern-relevant
+- Small talk or pleasantries
+
+Format: Return a JSON array only (no markdown, no explanation):
+[
+  { "content": "short fact string (max 15 words)", "category": "personal|preference|fact|pattern|task", "importance": 1|2|3 }
+]
+
+Importance: 3=critical (always include), 2=useful, 1=minor (trim first if space needed)
+Return empty array [] if nothing is worth saving.
+
+USER: ${userName}
+TRANSCRIPT:
+${transcript.substring(0, 3000)}`;
+
+  try {
+    const result = await ai.models.generateContent({
+      model: "gemini-2.0-flash",
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+    });
+    const raw = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
+    // Strip markdown code blocks if present
+    const json = raw.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+    const entries: any[] = JSON.parse(json);
+    if (!Array.isArray(entries)) return;
+
+    for (const e of entries) {
+      if (!e.content || typeof e.content !== "string") continue;
+      addSmartMemory({
+        id: `mem_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        content: e.content.trim(),
+        category: e.category ?? "fact",
+        importance: [1, 2, 3].includes(e.importance) ? e.importance : 2,
+        timestamp: new Date().toISOString(),
+      });
+    }
+    console.log(`[MEMORY] Extracted ${entries.length} memories from session`);
+  } catch (err) {
+    console.error("[MEMORY EXTRACT ERROR]", err);
+  }
+}
+
+// ─── Web Search & Fetching Helpers ─────────────────────────────────────────────
+async function performWebSearch(query: string): Promise<any[]> {
+  const searxInstances = [
+    "https://search.mdosch.de/",
+    "https://searx.oloke.xyz/",
+    "https://etsi.me/"
+  ];
+  
+  for (const inst of searxInstances) {
+    try {
+      const url = `${inst}search?q=${encodeURIComponent(query)}&format=json`;
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        },
+        signal: AbortSignal.timeout(4000)
+      });
+      if (res.ok) {
+        const data: any = await res.json();
+        if (data.results && data.results.length > 0) {
+          return data.results.slice(0, 5).map((r: any) => ({
+            title: r.title,
+            url: r.url,
+            content: r.content || r.snippet || ""
+          }));
+        }
+      }
+    } catch (e: any) {
+      console.warn(`[SEARCH WARNING] Failed querying instance ${inst}: ${e.message}`);
+    }
+  }
+
+  // Wikipedia + DuckDuckGo definition fallback if all SearXNG instances fail
+  try {
+    console.log("[SEARCH FALLBACK] Trying Wikipedia + DuckDuckGo fallback APIs");
+    const results: any[] = [];
+
+    // 1. Wikipedia API
+    try {
+      const wikiUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&origin=*`;
+      const wikiRes = await fetch(wikiUrl, { signal: AbortSignal.timeout(3000) });
+      if (wikiRes.ok) {
+        const wikiData: any = await wikiRes.json();
+        const wikiSearch = wikiData.query?.search || [];
+        for (const item of wikiSearch.slice(0, 3)) {
+          results.push({
+            title: `${item.title} (Wikipedia)`,
+            url: `https://en.wikipedia.org/wiki/${encodeURIComponent(item.title)}`,
+            content: item.snippet ? item.snippet.replace(/<[^>]+>/g, '') : ""
+          });
+        }
+      }
+    } catch (wikiErr: any) {
+      console.warn("[SEARCH FALLBACK] Wikipedia failed:", wikiErr.message);
+    }
+
+    // 2. DuckDuckGo Instant Answer API
+    try {
+      const ddgUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json`;
+      const ddgRes = await fetch(ddgUrl, { signal: AbortSignal.timeout(3000) });
+      if (ddgRes.ok) {
+        const ddgData: any = await ddgRes.json();
+        if (ddgData.AbstractText) {
+          results.push({
+            title: ddgData.Heading || "DuckDuckGo Instant Answer",
+            url: ddgData.AbstractURL || "",
+            content: ddgData.AbstractText
+          });
+        }
+      }
+    } catch (ddgErr: any) {
+      console.warn("[SEARCH FALLBACK] DuckDuckGo instant answer failed:", ddgErr.message);
+    }
+
+    if (results.length > 0) return results;
+  } catch (fallbackErr: any) {
+    console.error("[SEARCH FALLBACK] All fallbacks failed:", fallbackErr.message);
+  }
+
+  throw new Error("All search engines are currently rate-limiting or offline. Please try again later.");
+}
+
+async function performFetchPage(urlStr: string): Promise<string> {
+  try {
+    const parsedUrl = new URL(urlStr);
+    if (!["http:", "https:"].includes(parsedUrl.protocol)) {
+      throw new Error("Invalid protocol. Only http and https are allowed.");
+    }
+
+    const res = await fetch(urlStr, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+      },
+      signal: AbortSignal.timeout(6000)
+    });
+
+    if (!res.ok) {
+      throw new Error(`HTTP error! Status: ${res.status}`);
+    }
+
+    const contentType = res.headers.get("content-type") || "";
+    if (!contentType.includes("text") && !contentType.includes("json") && !contentType.includes("xml")) {
+      throw new Error("Unsupported content type: " + contentType);
+    }
+
+    const html = await res.text();
+    
+    // Clean and extract visible text from HTML
+    let text = html
+      .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, '')
+      .replace(/<(script|style|noscript|iframe|svg)[^>]*>[\s\S]*?<\/\1>/gi, '')
+      .replace(/<(nav|footer|header)[^>]*>[\s\S]*?<\/\1>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'");
+
+    text = text.replace(/\s+/g, ' ').trim();
+
+    if (text.length > 3000) {
+      text = text.substring(0, 3000) + "... [Truncated]";
+    }
+
+    if (!text) {
+      return "The page loaded successfully, but no readable text content was found.";
+    }
+
+    return text;
+  } catch (e: any) {
+    throw new Error(`Failed to fetch page: ${e.message}`);
+  }
+}
+
+// ─── Server ───────────────────────────────────────────────────────────────────
+async function startServer() {
+  const app = express();
+  const PORT = 3000;
+  app.use(express.json());
+
+  const server = http.createServer(app);
+  const wss = new WebSocketServer({ server, path: "/live" });
+
+  const ai = new GoogleGenAI({
+    apiKey: process.env.GEMINI_API_KEY,
+    httpOptions: { headers: { "User-Agent": "aistudio-build" } },
+  });
+
+  wss.on("connection", async (clientWs) => {
+    let session: any = null;
+    const db = getDb();
+    const activeMode = db.modes.find(m => m.id === db.activeModeId) || db.modes[0];
+    const userName = db.userName || "there";
+
+    // Session transcript for smart memory extraction at end
+    const sessionLog: string[] = [];
+    const logTurn = (role: string, text: string) => {
+      if (text.length > 10) sessionLog.push(`${role}: ${text.substring(0, 200)}`);
+    };
+
+    const memoryContext = formatMemoryForPrompt(db.memory);
+
+    const systemInstruction = `${activeMode.instruction}
+
+IDENTITY: Your name is Nova. You are speaking to ${userName}.
+VOICE RULES (non-negotiable):
+- Max 2-3 SHORT sentences per response. You are being spoken aloud.
+- NEVER say "Is there anything else I can help you with?" or any variant of that. EVER.
+- NEVER offer further help at the end of responses. Answer and stop.
+- Address the user as ${userName} occasionally to feel personal.
+- When the session starts, say ONLY: "Hey ${userName}!" — nothing else. Just that greeting.
+${memoryContext}`;
+
+    const functionDeclarations: any[] = [
+      {
+        name: "searchWeb",
+        description: "Searches the web for the given query and returns a list of matching search results (title, snippet, URL). Use this tool whenever the user asks for real-time information, current news, weather, or facts not in your training data.",
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            query: {
+              type: Type.STRING,
+              description: "The search query."
+            }
+          },
+          required: ["query"]
+        }
+      },
+      {
+        name: "fetchPage",
+        description: "Fetches and extracts the main text content of a specific web page/URL. Use this to read the details of a specific web page after performing a search.",
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            url: {
+              type: Type.STRING,
+              description: "The absolute URL of the web page to fetch."
+            }
+          },
+          required: ["url"]
+        }
+      },
+      {
+        name: "endSession",
+        description: "End the voice session. Call when user says goodbye, bye, stop listening, or dismisses Nova.",
+      }
+    ];
+
+    // Only allow runLinuxCommand in modes that explicitly support it
+    const systemAccessModes = ["assistant", "sysadmin", "dev", "unrestricted"];
+    if (systemAccessModes.includes(activeMode.id)) {
+      functionDeclarations.push({
+        name: "runLinuxCommand",
+        description: "Executes a shell command on the Linux host and returns stdout/stderr. Use for system info, file operations, running scripts, etc.",
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            command: {
+              type: Type.STRING,
+              description: "The shell command to execute.",
+            },
+          },
+          required: ["command"],
+        },
+      });
+    }
+
+    try {
+      session = await ai.live.connect({
+        model: "gemini-3.1-flash-live-preview",
+        callbacks: {
+          onmessage: async (message: LiveServerMessage) => {
+            // Forward all audio parts to client
+            const parts = message.serverContent?.modelTurn?.parts ?? [];
+            for (const part of parts) {
+              if (part.inlineData?.data) {
+                clientWs.send(JSON.stringify({ audio: part.inlineData.data }));
+              }
+              // Log text parts for memory
+              if (part.text) logTurn("Nova", part.text);
+            }
+
+            if (message.serverContent?.interrupted) {
+              clientWs.send(JSON.stringify({ interrupted: true }));
+            }
+
+            // Handle function calls
+            const toolCalls = message.toolCall?.functionCalls;
+            if (toolCalls && toolCalls.length > 0) {
+              const toolResponses: any[] = [];
+
+              for (const call of toolCalls) {
+                console.log(`[TOOL] ${call.name}`, JSON.stringify(call.args));
+
+                if (call.name === "endSession") {
+                  clientWs.send(JSON.stringify({ action: "endSession" }));
+                  toolResponses.push({
+                    id: call.id,
+                    name: call.name,
+                    response: { result: "Session ended." },
+                  });
+                } else if (call.name === "searchWeb") {
+                  const query = (call.args as any).query as string;
+                  logTurn("SEARCH", query);
+                  let resultStr = "";
+                  try {
+                    const results = await performWebSearch(query);
+                    resultStr = JSON.stringify(results);
+                    console.log(`[SEARCH OK] ${query}`);
+                  } catch (error: any) {
+                    resultStr = `ERROR: ${error.message}`;
+                    console.error(`[SEARCH FAIL] ${query}`, error.message);
+                  }
+                  toolResponses.push({
+                    id: call.id,
+                    name: call.name,
+                    response: { result: resultStr },
+                  });
+                } else if (call.name === "fetchPage") {
+                  const url = (call.args as any).url as string;
+                  logTurn("FETCH", url);
+                  let resultStr = "";
+                  try {
+                    resultStr = await performFetchPage(url);
+                    console.log(`[FETCH OK] ${url}`);
+                  } catch (error: any) {
+                    resultStr = `ERROR: ${error.message}`;
+                    console.error(`[FETCH FAIL] ${url}`, error.message);
+                  }
+                  toolResponses.push({
+                    id: call.id,
+                    name: call.name,
+                    response: { result: resultStr },
+                  });
+                } else if (call.name === "runLinuxCommand") {
+                  const command = (call.args as any).command as string;
+                  logTurn("CMD", command);
+                  let resultStr = "";
+                  try {
+                    const { stdout, stderr } = await execAsync(command, {
+                      timeout: 15000,
+                      maxBuffer: 2 * 1024 * 1024,
+                    });
+                    resultStr = `STDOUT:\n${stdout}\nSTDERR:\n${stderr}`.trim();
+                    console.log(`[CMD OK] ${command}`);
+                  } catch (error: any) {
+                    resultStr = `ERROR: ${error.message}\n${error.stderr ?? ""}`.trim();
+                    console.error(`[CMD FAIL] ${command}`, error.message);
+                  }
+                  if (resultStr.length > 2000) {
+                    resultStr = resultStr.substring(0, 2000) + "\n...[TRUNCATED]";
+                  }
+                  toolResponses.push({
+                    id: call.id,
+                    name: call.name,
+                    response: { result: resultStr },
+                  });
+                }
+              }
+
+              if (toolResponses.length > 0) {
+                session.sendToolResponse({ functionResponses: toolResponses });
+              }
+            }
+          },
+          onerror: (err: any) => {
+            console.error("[GEMINI ERROR]", err);
+            clientWs.send(JSON.stringify({ error: "Gemini error: " + String(err) }));
+          },
+          onclose: () => {
+            console.log("[GEMINI SESSION CLOSED]");
+          },
+        },
+        config: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: db.voiceName || "Aoede" },
+            },
+          },
+          systemInstruction,
+          tools: [
+            {
+              functionDeclarations,
+            },
+          ],
+        },
+      });
+
+      // Trigger greeting after session stabilises
+      setTimeout(() => {
+        try {
+          if (session) {
+            session.sendRealtimeInput({
+              text: `Say your greeting now. Just say: "Hey ${userName}!"`,
+            });
+          }
+        } catch (e) {
+          console.error("[GREETING ERROR]", e);
+        }
+      }, 600);
+
+    } catch (e) {
+      console.error("[GEMINI CONNECT ERROR]", e);
+      clientWs.close();
+      return;
+    }
+
+    clientWs.on("message", (data) => {
+      try {
+        const payload = JSON.parse(data.toString());
+        if (payload.audio && session) {
+          session.sendRealtimeInput({
+            audio: { data: payload.audio, mimeType: "audio/pcm;rate=16000" },
+          });
+        }
+        if (payload.text && session) {
+          logTurn(userName, payload.text);
+          session.sendRealtimeInput({ text: payload.text });
+        }
+      } catch (err) {
+        console.error("[MESSAGE ERROR]", err);
+      }
+    });
+
+    clientWs.on("close", async () => {
+      console.log("[CLIENT DISCONNECTED] — extracting memories...");
+      // Extract smart memories from this session in the background
+      if (sessionLog.length > 2) {
+        extractAndSaveMemories(ai, userName, sessionLog).catch(console.error);
+      }
+    });
+  });
+
+  // ─── REST API ──────────────────────────────────────────────────────────────
+  app.get("/api/config", (_req, res) => {
+    res.json(getDb());
+  });
+
+  app.post("/api/config", (req, res) => {
+    const db = getDb();
+    const newConfig: NovaConfig = { ...db, ...req.body };
+    saveDb(newConfig);
+    res.json({ success: true, config: getDb() }); // Return merged config with built-in modes
+  });
+
+  app.post("/api/memory/clear", (_req, res) => {
+    clearMemory();
+    res.json({ success: true });
+  });
+
+  app.post("/api/memory/add", (req, res) => {
+    const { content, category, importance } = req.body;
+    if (!content) return res.status(400).json({ error: "content required" });
+    addSmartMemory({
+      id: `mem_${Date.now()}`,
+      content,
+      category: category ?? "fact",
+      importance: importance ?? 2,
+      timestamp: new Date().toISOString(),
+    });
+    res.json({ success: true });
+  });
+
+  // Vite / static
+  if (process.env.NODE_ENV !== "production") {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), "dist");
+    app.use(express.static(distPath));
+    app.get("*", (_req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
+    });
+  }
+
+  server.listen(PORT, "0.0.0.0", () => {
+    console.log(`Nova server running on http://0.0.0.0:${PORT}`);
+  });
+}
+
+startServer();
