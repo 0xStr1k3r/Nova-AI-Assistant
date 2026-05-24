@@ -1,10 +1,10 @@
 export interface VoiceProfile {
-  meanPitch: number;
-  minPitch: number;
-  maxPitch: number;
-  rmsThreshold: number;
+  spectrum: number[];      // Normalized average FFT magnitude spectrum
+  rmsThreshold: number;   // Minimum RMS threshold to detect voice
+  sampleRate: number;     // Recording sample rate
 }
 
+/** Calculate Root Mean Square (RMS) of audio buffer */
 export function calculateRMS(buffer: Float32Array): number {
   let sum = 0;
   for (let i = 0; i < buffer.length; i++) {
@@ -14,76 +14,87 @@ export function calculateRMS(buffer: Float32Array): number {
 }
 
 /**
- * Autocorrelation pitch detector for fundamental frequency (F0) estimation.
- * Returns pitch in Hz, or -1 if no clear pitch is detected or outside human speech range.
+ * Extracts the vocal tract frequency spectrum (timbre) from FFT data.
+ * Focuses on speech frequencies (80Hz to 4000Hz) and normalizes the vector.
  */
-export function detectPitch(buffer: Float32Array, sampleRate: number): number {
-  const SIZE = buffer.length;
-  const r = new Float32Array(SIZE);
+export function getVoiceSpectrum(
+  fftData: Float32Array,
+  sampleRate: number
+): number[] {
+  const fftSize = fftData.length * 2;
+  const binResolution = sampleRate / fftSize;
   
-  // Compute autocorrelation
-  for (let lag = 0; lag < SIZE; lag++) {
-    let sum = 0;
-    for (let i = 0; i < SIZE - lag; i++) {
-      sum += buffer[i] * buffer[i + lag];
-    }
-    r[lag] = sum;
+  // Speech range: 80Hz to 4000Hz
+  const minBin = Math.max(0, Math.floor(80 / binResolution));
+  const maxBin = Math.min(fftData.length - 1, Math.floor(4000 / binResolution));
+  
+  const spectrum: number[] = [];
+  let sumPower = 0;
+  
+  for (let i = minBin; i <= maxBin; i++) {
+    // Convert dB value to linear amplitude
+    // fftData contains values in dB (typically -100 to 0)
+    const db = fftData[i];
+    // Avoid infinity on silent bins
+    const amp = db < -100 ? 0 : Math.pow(10, db / 20);
+    spectrum.push(amp);
+    sumPower += amp * amp;
   }
-
-  // Peak threshold (must be at least 15% of r[0] to count)
-  const threshold = 0.15 * r[0];
-
-  // Find first zero crossing to avoid the center peak
-  let firstZero = -1;
-  for (let i = 0; i < SIZE - 1; i++) {
-    if (r[i] > 0 && r[i + 1] <= 0) {
-      firstZero = i;
-      break;
+  
+  // Normalize vector to unit length
+  const magnitude = Math.sqrt(sumPower);
+  if (magnitude > 0) {
+    for (let i = 0; i < spectrum.length; i++) {
+      spectrum[i] /= magnitude;
     }
-  }
-
-  if (firstZero === -1) return -1;
-
-  // Find the highest local peak after the zero crossing
-  let peakIndex = -1;
-  let peakValue = -1;
-  for (let i = firstZero; i < SIZE; i++) {
-    if (r[i] > threshold && r[i] > peakValue) {
-      if (i > 0 && r[i] > r[i - 1] && i < SIZE - 1 && r[i] > r[i + 1]) {
-        peakValue = r[i];
-        peakIndex = i;
-      }
+  } else {
+    // Return flat spectrum if silent
+    const val = 1 / Math.sqrt(spectrum.length);
+    for (let i = 0; i < spectrum.length; i++) {
+      spectrum[i] = val;
     }
   }
-
-  if (peakIndex !== -1) {
-    const pitch = sampleRate / peakIndex;
-    // Standard speaking voice pitch is between 75Hz and 350Hz
-    if (pitch >= 75 && pitch <= 350) {
-      return pitch;
-    }
-  }
-  return -1;
+  
+  return spectrum;
 }
 
 /**
- * Checks if the voiced audio frame matches the user's pitch profile.
- * If not voiced (rms below threshold or pitch undetectable), returns false.
+ * Calculates the cosine similarity between two spectral vectors.
+ * Returns a value between 0 (completely different) and 1 (identical).
  */
-export function matchesVoiceProfile(
-  buffer: Float32Array,
-  sampleRate: number,
-  profile: VoiceProfile
-): boolean {
-  const rms = calculateRMS(buffer);
-  if (rms < profile.rmsThreshold) return false;
-
-  const pitch = detectPitch(buffer, sampleRate);
-  if (pitch === -1) return false;
-
-  // Allow a wide tolerance around the recorded pitch range (+-30Hz margin)
-  const minLimit = profile.minPitch - 30;
-  const maxLimit = profile.maxPitch + 30;
+export function calculateCosineSimilarity(vecA: number[], vecB: number[]): number {
+  if (vecA.length !== vecB.length) return 0;
   
-  return pitch >= minLimit && pitch <= maxLimit;
+  let dotProduct = 0;
+  let normA = 0;
+  let normB = 0;
+  
+  for (let i = 0; i < vecA.length; i++) {
+    dotProduct += vecA[i] * vecB[i];
+    normA += vecA[i] * vecA[i];
+    normB += vecB[i] * vecB[i];
+  }
+  
+  if (normA === 0 || normB === 0) return 0;
+  return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
+/**
+ * Verifies if the current FFT frequency spectrum matches the registered user profile.
+ */
+export function verifySpeaker(
+  fftData: Float32Array,
+  sampleRate: number,
+  profile: VoiceProfile,
+  threshold = 0.82 // Cosine similarity threshold (0.80 - 0.85 is standard for speech spectral shape matching)
+): boolean {
+  if (!profile || !profile.spectrum) return false;
+  
+  const currentSpectrum = getVoiceSpectrum(fftData, sampleRate);
+  
+  // If the sizes differ (different FFT size or sampleRate), we cannot compare directly
+  if (currentSpectrum.length !== profile.spectrum.length) return false;
+  
+  const similarity = calculateCosineSimilarity(currentSpectrum, profile.spectrum);
+  return similarity >= threshold;
 }

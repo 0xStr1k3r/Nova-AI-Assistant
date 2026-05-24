@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { pcmToBase64 } from "./utils/audio";
 import { AudioStreamer } from "./utils/AudioStreamer";
 import SettingsModal from "./components/SettingsModal";
-import { detectPitch, matchesVoiceProfile, calculateRMS } from "./utils/voiceProfile";
+import { verifySpeaker, calculateRMS } from "./utils/voiceProfile";
 
 type AppStatus = "idle" | "wake_listening" | "connecting" | "active";
 
@@ -125,17 +125,31 @@ export default function App() {
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       standbyAudioCtxRef.current = audioCtx;
       const source = audioCtx.createMediaStreamSource(stream);
+      
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.4;
+      
       const processor = audioCtx.createScriptProcessor(4096, 1, 1);
       standbyProcessorRef.current = processor;
       
-      source.connect(processor);
-      processor.connect(audioCtx.destination);
+      source.connect(analyser);
+      analyser.connect(processor);
+      
+      const gainNode = audioCtx.createGain();
+      gainNode.gain.value = 0;
+      processor.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
       
       processor.onaudioprocess = (e) => {
         const buffer = e.inputBuffer.getChannelData(0);
+        const rms = calculateRMS(buffer);
         const profile = configRef.current?.userVoiceProfile;
-        if (profile) {
-          const isUser = matchesVoiceProfile(buffer, 16000, profile);
+        
+        if (profile && rms > profile.rmsThreshold) {
+          const fftData = new Float32Array(analyser.frequencyBinCount);
+          analyser.getFloatFrequencyData(fftData);
+          const isUser = verifySpeaker(fftData, 16000, profile);
           if (isUser) {
             lastUserVoiceTimeRef.current = Date.now();
           }
@@ -191,7 +205,7 @@ export default function App() {
           if (configRef.current?.voiceResponseMode === "user" && configRef.current?.userVoiceProfile) {
             const timeSinceUserSpoke = Date.now() - lastUserVoiceTimeRef.current;
             if (timeSinceUserSpoke > 2500) {
-              addLog("Wake word heard, but speaker pitch did not match registered user profile. Trigger ignored.", "info");
+              addLog("Wake word heard, but speaker voice footprint did not match registered user profile. Trigger ignored.", "info");
               return;
             }
           }
@@ -262,30 +276,46 @@ export default function App() {
       mediaStreamRef.current = stream;
 
       const source = audioCtx.createMediaStreamSource(stream);
+      
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.4;
+      
       const processor = audioCtx.createScriptProcessor(4096, 1, 1);
       processorRef.current = processor;
-      source.connect(processor);
-      processor.connect(audioCtx.destination);
-
+      
+      source.connect(analyser);
+      analyser.connect(processor);
+      
+      const gainNode = audioCtx.createGain();
+      gainNode.gain.value = 0;
+      processor.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+ 
       addLog("Connecting to Nova AI core...", "info");
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const ws = new WebSocket(`${protocol}//${location.host}/live`);
       wsRef.current = ws;
-
+ 
       processor.onaudioprocess = (e) => {
         const channelData = e.inputBuffer.getChannelData(0);
+        const rms = calculateRMS(channelData);
         let shouldSend = true;
         
         if (configRef.current?.voiceResponseMode === "user" && configRef.current?.userVoiceProfile) {
-          const isUser = matchesVoiceProfile(channelData, 16000, configRef.current.userVoiceProfile);
-          if (isUser) {
-            lastUserVoiceTimeRef.current = Date.now();
+          if (rms > configRef.current.userVoiceProfile.rmsThreshold) {
+            const fftData = new Float32Array(analyser.frequencyBinCount);
+            analyser.getFloatFrequencyData(fftData);
+            const isUser = verifySpeaker(fftData, 16000, configRef.current.userVoiceProfile);
+            if (isUser) {
+              lastUserVoiceTimeRef.current = Date.now();
+            }
           }
           if (Date.now() - lastUserVoiceTimeRef.current > 1200) {
             shouldSend = false;
           }
         }
-
+ 
         if (ws.readyState === WebSocket.OPEN) {
           const dataToSend = shouldSend ? channelData : new Float32Array(channelData.length);
           ws.send(JSON.stringify({ audio: pcmToBase64(dataToSend) }));

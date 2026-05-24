@@ -3,7 +3,7 @@ import {
   X, Save, Plus, Trash, Brain, Mic, Sliders, User,
   Volume2, ShieldCheck, ShieldOff, Check,
 } from "lucide-react";
-import { detectPitch, calculateRMS, VoiceProfile } from "../utils/voiceProfile";
+import { getVoiceSpectrum, calculateRMS, VoiceProfile } from "../utils/voiceProfile";
 
 export interface Mode {
   id: string;
@@ -72,12 +72,22 @@ export default function SettingsModal({
       
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       const source = audioCtx.createMediaStreamSource(stream);
+      
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.4;
+      
       const processor = audioCtx.createScriptProcessor(2048, 1, 1);
       
-      source.connect(processor);
-      processor.connect(audioCtx.destination);
+      source.connect(analyser);
+      analyser.connect(processor);
       
-      const pitches: number[] = [];
+      const gainNode = audioCtx.createGain();
+      gainNode.gain.value = 0;
+      processor.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      
+      const spectrumFrames: number[][] = [];
       const rmsValues: number[] = [];
       const recordTimeMs = 3000;
       
@@ -89,10 +99,10 @@ export default function SettingsModal({
         rmsValues.push(rms);
         
         if (rms > 0.015) {
-          const pitch = detectPitch(buffer, 16000);
-          if (pitch !== -1) {
-            pitches.push(pitch);
-          }
+          const fftData = new Float32Array(analyser.frequencyBinCount);
+          analyser.getFloatFrequencyData(fftData);
+          const spectrum = getVoiceSpectrum(fftData, 16000);
+          spectrumFrames.push(spectrum);
         }
       };
       
@@ -100,34 +110,54 @@ export default function SettingsModal({
       
       processor.disconnect();
       source.disconnect();
+      analyser.disconnect();
+      gainNode.disconnect();
       stream.getTracks().forEach(t => t.stop());
       audioCtx.close();
       
-      if (pitches.length < 5) {
-        setRecordingStatus("No clear voice pitch detected. Please speak louder and try again.");
+      if (spectrumFrames.length < 5) {
+        setRecordingStatus("No clear voice resonances detected. Please speak louder and try again.");
         setRecordingVoice(false);
         return;
       }
       
-      pitches.sort((a, b) => a - b);
-      const meanPitch = pitches.reduce((sum, p) => sum + p, 0) / pitches.length;
-      const p10 = pitches[Math.floor(pitches.length * 0.1)];
-      const p90 = pitches[Math.floor(pitches.length * 0.9)];
+      const numFrames = spectrumFrames.length;
+      const numBins = spectrumFrames[0].length;
+      const averageSpectrum = new Array(numBins).fill(0);
+      
+      for (let i = 0; i < numBins; i++) {
+        let sum = 0;
+        for (let j = 0; j < numFrames; j++) {
+          sum += spectrumFrames[j][i];
+        }
+        averageSpectrum[i] = sum / numFrames;
+      }
+      
+      let sumPower = 0;
+      for (let i = 0; i < numBins; i++) {
+        sumPower += averageSpectrum[i] * averageSpectrum[i];
+      }
+      const magnitude = Math.sqrt(sumPower);
+      if (magnitude > 0) {
+        for (let i = 0; i < numBins; i++) {
+          averageSpectrum[i] /= magnitude;
+        }
+      }
+      
       const averageRMS = rmsValues.reduce((sum, v) => sum + v, 0) / rmsValues.length;
       const rmsThreshold = Math.max(0.012, averageRMS * 0.4);
       
       const profile: VoiceProfile = {
-        meanPitch: Math.round(meanPitch),
-        minPitch: Math.round(p10),
-        maxPitch: Math.round(p90),
+        spectrum: averageSpectrum,
         rmsThreshold: Number(rmsThreshold.toFixed(4)),
+        sampleRate: 16000,
       };
       
       setLocal({
         ...local,
         userVoiceProfile: profile,
       });
-      setRecordingStatus(`Voice profile recorded: Mean ${profile.meanPitch}Hz`);
+      setRecordingStatus(`Voice footprint registered! (${numFrames} frames analyzed)`);
       setRecordingVoice(false);
       
     } catch (err: any) {
@@ -305,11 +335,11 @@ export default function SettingsModal({
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-xs font-semibold text-white">Registered Voice Profile</p>
-                      <p className="text-[10px] text-slate-500 mt-0.5">Filter speech by your fundamental frequency (pitch)</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">Filter speech by your unique spectral timbre footprint</p>
                     </div>
                     {local.userVoiceProfile && (
                       <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-0.5 rounded-full font-semibold font-mono">
-                        Active ({local.userVoiceProfile.meanPitch} Hz)
+                        Active ({local.userVoiceProfile.spectrum.length} bands)
                       </span>
                     )}
                   </div>
@@ -317,9 +347,10 @@ export default function SettingsModal({
                   {local.userVoiceProfile ? (
                     <div className="text-xs text-slate-300 space-y-2 font-mono">
                       <div className="grid grid-cols-2 gap-2 text-[11px] bg-black/20 p-2.5 rounded-xl border border-white/5">
-                        <div>Mean Pitch: <span className="text-violet-300">{local.userVoiceProfile.meanPitch} Hz</span></div>
-                        <div>Pitch Range: <span className="text-violet-300">{local.userVoiceProfile.minPitch}Hz - {local.userVoiceProfile.maxPitch}Hz</span></div>
+                        <div>Status: <span className="text-emerald-400">Fingerprint Active</span></div>
+                        <div>Resolution: <span className="text-violet-300">{local.userVoiceProfile.spectrum.length} bands</span></div>
                         <div>RMS Thresh: <span className="text-violet-300">{local.userVoiceProfile.rmsThreshold}</span></div>
+                        <div>Sample Rate: <span className="text-violet-300">{local.userVoiceProfile.sampleRate} Hz</span></div>
                       </div>
                       <div className="flex gap-2">
                         <button
