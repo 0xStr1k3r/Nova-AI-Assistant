@@ -7,6 +7,8 @@
 
 set -e  # Exit on error
 
+PROJECT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -198,20 +200,17 @@ setup_godo_integration() {
           try { db = JSON.parse(fs.readFileSync(DB_PATH, 'utf-8')); } catch(e) {}
         }
         if (!db.memory) db.memory = [];
-        const hasGoDo = db.memory.some(m => m.content.includes('GoDo CLI'));
-        if (!hasGoDo) {
-          db.memory.push({
-            id: 'mem_godo_' + Date.now(),
-            content: 'User manages tasks using GoDo CLI. Commands: godo list to show, godo add -t \"title\" to add, godo complete <id> to finish.',
-            category: 'preference',
-            importance: 3,
-            timestamp: new Date().toISOString()
-          });
-          fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2), 'utf-8');
-          console.log('✓ GoDo task manager integration added to assistant memory.');
-        } else {
-          console.log('ℹ GoDo task manager integration is already in memory.');
-        }
+        // Clear any older GoDo memory entries to update it
+        db.memory = db.memory.filter(m => !m.content.toLowerCase().includes('godo'));
+        db.memory.push({
+          id: 'mem_godo_' + Date.now(),
+          content: 'The user manages tasks locally using the GoDo CLI task manager. You can execute local task commands using runLinuxCommand. The GoDo commands are: \"godo list\" to view all tasks with IDs, \"godo add -t \\\"task description\\\"\" to create a new task, and \"godo complete <id>\" to mark a task as finished. Proactively suggest or run these commands when the user mentions tasks, items, or lists.',
+          category: 'preference',
+          importance: 3,
+          timestamp: new Date().toISOString()
+        });
+        fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2), 'utf-8');
+        console.log('✓ GoDo task manager integration added to assistant memory.');
         "
 
         # Try to install GoDo CLI

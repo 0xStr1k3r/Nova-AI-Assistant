@@ -239,6 +239,8 @@ async function startServer() {
     const db = getDb();
     const activeMode = db.modes.find(m => m.id === db.activeModeId) || db.modes[0];
     const userName = db.userName || "there";
+    const rawGreeting = db.greetingPhrase || "Hey {name}!";
+    const greeting = rawGreeting.replace("{name}", userName);
 
     // Session transcript for smart memory extraction at end
     const sessionLog: string[] = [];
@@ -252,12 +254,15 @@ async function startServer() {
     const systemInstruction = `${activeMode.instruction}
 
 IDENTITY: Your name is ${assistantName}. You are speaking to ${userName}.
+CAPABILITIES:
+- You have the searchWeb tool to query the internet, and the fetchPage tool to read specific web pages. You have full internet and web access via these tools. Use them to answer search queries.
+- You have the runLinuxCommand tool to run bash commands on your host system. You have full system access (view, read, write, and manage local files, folders, and check system status) via this tool.
 VOICE RULES (non-negotiable):
 - Max 2-3 SHORT sentences per response. You are being spoken aloud.
 - NEVER say "Is there anything else I can help you with?" or any variant of that. EVER.
 - NEVER offer further help at the end of responses. Answer and stop.
 - Address the user as ${userName} occasionally to feel personal.
-- When the session starts, say ONLY: "Hey ${userName}!" — nothing else. Just that greeting.
+- When the session starts, say ONLY: "${greeting}" — nothing else. Just that greeting.
 ${memoryContext}`;
 
     const functionDeclarations: any[] = [
@@ -441,7 +446,7 @@ ${memoryContext}`;
         try {
           if (session) {
             session.sendRealtimeInput({
-              text: `Say your greeting now. Just say: "Hey ${userName}!"`,
+              text: `Say your greeting now. Just say: "${greeting}"`,
             });
           }
         } catch (e) {

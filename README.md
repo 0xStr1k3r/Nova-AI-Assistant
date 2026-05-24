@@ -80,6 +80,27 @@ Once setup finishes, open your browser and navigate to: **[http://localhost:3000
 
 ---
 
+## GoDo Task Manager Integration
+
+Nova features optional out-of-the-box integration with the **[GoDo CLI Task Manager](https://github.com/0xStr1k3r/GoDo)**.
+
+### What is GoDo?
+GoDo is a terminal-based command-line interface (CLI) and text user interface (TUI) task management tool written in Go. It allows users to track tasks, lists, and items locally on their host machine.
+
+### Setup and Integration
+During installation (`./install.sh`), you will be prompted to integrate GoDo:
+1. **Interactive Integration Prompt**: The script will ask: `Do you use the GoDo CLI task manager (https://github.com/0xStr1k3r/GoDo)? Integrate it? (y/n)`.
+2. **Auto-Installation**: If you select `y`, the installer will check if Go is installed. If so, it will clone the GoDo repository, build it locally, and install it globally as `godo` (in `/usr/local/bin/godo`). If Go is missing, it will provide instructions for manual installation.
+3. **Smart Memory Injector**: The installer automatically inserts a detailed preference entry into Nova's memory database detailing GoDo command usage.
+
+### How to Use
+When Nova is in a mode that permits system command execution (such as **Assistant**, **Sysadmin**, **Dev**, or **Unrestricted**), you can manage your tasks hands-free using natural language voice commands:
+* **"Nova, show my task list"** -> Runs `godo list` to retrieve your active task list.
+* **"Add a task to buy groceries"** -> Runs `godo add -t "buy groceries"` to add a task.
+* **"Mark task number 3 as completed"** -> Runs `godo complete 3` to mark task 3 as finished.
+
+---
+
 ## Daemon & Service Management
 
 The installer configures a **Systemd User Service** so Nova can run in the background.

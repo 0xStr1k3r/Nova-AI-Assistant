@@ -26,10 +26,10 @@ export interface MemoryEntry {
 }
 
 export interface VoiceProfile {
-  meanPitch: number;
-  minPitch: number;
-  maxPitch: number;
+  name: string;
+  spectrum: number[];
   rmsThreshold: number;
+  sampleRate: number;
 }
 
 export interface NovaConfig {
@@ -40,7 +40,8 @@ export interface NovaConfig {
   memory: MemoryEntry[];
   voiceName: string;
   voiceResponseMode: "all" | "user";
-  userVoiceProfile: VoiceProfile | null;
+  userVoiceProfiles: VoiceProfile[];
+  greetingPhrase?: string;
 }
 
 
@@ -53,8 +54,7 @@ export const DEFAULT_MODES: Mode[] = [
     emoji: "✨",
     instruction: `You are Nova, a warm and witty personal AI voice assistant.
 - Be helpful, conversational, and direct.
-- You can run safe read-only Linux commands (ls, top, free, df, uname, ps, date) using runLinuxCommand.
-- NEVER run write, delete, or system-modifying commands in this mode.`,
+- You can run Linux commands using runLinuxCommand to view, read, write, and manage files, check system status, and run system tasks.`,
     isCustom: false,
   },
   {
@@ -151,7 +151,8 @@ const defaultConfig: NovaConfig = {
   memory: [],
   voiceName: "Aoede",
   voiceResponseMode: "all",
-  userVoiceProfile: null,
+  userVoiceProfiles: [],
+  greetingPhrase: "Hey {name}!",
 };
 
 // ─── DB Operations ────────────────────────────────────────────────────────────
@@ -172,7 +173,45 @@ export function getDb(): NovaConfig {
         ...defaultConfig,
         ...saved,
         modes: [...builtInModes, ...customModes],
-      };
+      } as NovaConfig & { userVoiceProfile?: any };
+
+      if (merged.userVoiceProfile) {
+        if (!merged.userVoiceProfiles) {
+          merged.userVoiceProfiles = [];
+        }
+        const profile = merged.userVoiceProfile;
+        if (profile && profile.spectrum && Array.isArray(profile.spectrum)) {
+          const exists = merged.userVoiceProfiles.some(p => p.name === "Primary User");
+          if (!exists) {
+            merged.userVoiceProfiles.push({
+              name: "Primary User",
+              spectrum: profile.spectrum,
+              rmsThreshold: profile.rmsThreshold ?? 0.015,
+              sampleRate: profile.sampleRate ?? 16000,
+            });
+          }
+        }
+        delete merged.userVoiceProfile;
+      }
+
+      if (!merged.userVoiceProfiles) {
+        merged.userVoiceProfiles = [];
+      }
+
+      // ── Purge profiles built with the old raw-FFT algorithm ─────────────────
+      // The new Bark-scale algorithm produces exactly 23 bands (BARK_EDGES_HZ has 24 edges).
+      // Any profile with a different spectrum length is incompatible and must be removed.
+      const EXPECTED_BARK_BANDS = 23;
+      const before = merged.userVoiceProfiles.length;
+      merged.userVoiceProfiles = merged.userVoiceProfiles.filter(
+        (p: any) => Array.isArray(p.spectrum) && p.spectrum.length === EXPECTED_BARK_BANDS
+      );
+      if (merged.userVoiceProfiles.length < before) {
+        console.warn(
+          `[Nova DB] Purged ${before - merged.userVoiceProfiles.length} voice profile(s) with incompatible spectrum format (expected ${EXPECTED_BARK_BANDS} bands).`
+        );
+      }
+
 
       if (envWakeWord) merged.wakeWord = envWakeWord;
       if (envUserName) merged.userName = envUserName;
