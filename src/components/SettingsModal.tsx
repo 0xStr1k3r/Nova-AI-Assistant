@@ -37,7 +37,9 @@ export type ConfigType = {
     godoEnabled: boolean;
     obsidianEnabled: boolean;
     obsidianPath: string;
-    opencodeEnabled?: boolean;
+    customAgentEnabled?: boolean;
+    nvidiaApiKey?: string;
+    nvidiaModel?: string;
   };
 };
 
@@ -620,7 +622,7 @@ export default function SettingsModal({
                   <button
                     type="button"
                     onClick={() => {
-                      const integrations = local.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "", opencodeEnabled: false };
+                      const integrations = local.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "", customAgentEnabled: false, nvidiaApiKey: "", nvidiaModel: "meta/llama-3.3-70b-instruct" };
                       setLocal({
                         ...local,
                         integrations: {
@@ -676,7 +678,7 @@ export default function SettingsModal({
                   <button
                     type="button"
                     onClick={() => {
-                      const integrations = local.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "", opencodeEnabled: false };
+                      const integrations = local.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "", customAgentEnabled: false, nvidiaApiKey: "", nvidiaModel: "meta/llama-3.3-70b-instruct" };
                       setLocal({
                         ...local,
                         integrations: {
@@ -704,7 +706,7 @@ export default function SettingsModal({
                       type="text"
                       value={local.integrations?.obsidianPath || ""}
                       onChange={e => {
-                        const integrations = local.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "", opencodeEnabled: false };
+                        const integrations = local.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "", customAgentEnabled: false, nvidiaApiKey: "", nvidiaModel: "meta/llama-3.3-70b-instruct" };
                         setLocal({
                           ...local,
                           integrations: {
@@ -726,9 +728,9 @@ export default function SettingsModal({
                 )}
               </div>
 
-              {/* OpenCode Integration */}
+              {/* Custom NVIDIA NIM Coding Agent Integration */}
               <div
-                className="p-4 rounded-2xl space-y-3"
+                className="p-4 rounded-2xl space-y-4"
                 style={{
                   background: "rgba(255, 255, 255, 0.02)",
                   border: "1px solid rgba(255, 255, 255, 0.05)"
@@ -739,47 +741,99 @@ export default function SettingsModal({
                     <div
                       className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm"
                       style={{
-                        background: local.integrations?.opencodeEnabled
+                        background: local.integrations?.customAgentEnabled
                           ? "rgba(139,92,246,0.15)"
                           : "rgba(255,255,255,0.03)",
-                        border: local.integrations?.opencodeEnabled
+                        border: local.integrations?.customAgentEnabled
                           ? "1px solid rgba(139,92,246,0.3)"
                           : "1px solid rgba(255,255,255,0.06)",
-                        color: local.integrations?.opencodeEnabled ? "#a78bfa" : "#64748b"
+                        color: local.integrations?.customAgentEnabled ? "#a78bfa" : "#64748b"
                       }}
                     >
-                      OC
+                      NV
                     </div>
                     <div>
-                      <p className="text-xs font-bold text-white">OpenCode Developer Agent</p>
+                      <p className="text-xs font-bold text-white">Custom NVIDIA Coding Agent</p>
                       <p className="text-[10px] text-slate-500 mt-0.5">
-                        Delegate complex coding, testing, and multi-file refactoring headlessly.
+                        Autonomous local agent loop powered by NVIDIA NIM API.
                       </p>
                     </div>
                   </div>
                   <button
                     type="button"
                     onClick={() => {
-                      const integrations = local.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "", opencodeEnabled: false };
+                      const integrations = local.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "", customAgentEnabled: false, nvidiaApiKey: "", nvidiaModel: "meta/llama-3.3-70b-instruct" };
                       setLocal({
                         ...local,
                         integrations: {
                           ...integrations,
-                          opencodeEnabled: !integrations.opencodeEnabled
+                          customAgentEnabled: !integrations.customAgentEnabled
                         }
                       });
                     }}
                     className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                      local.integrations?.opencodeEnabled ? "bg-violet-600" : "bg-slate-700"
+                      local.integrations?.customAgentEnabled ? "bg-violet-600" : "bg-slate-700"
                     }`}
                   >
                     <span
                       className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                        local.integrations?.opencodeEnabled ? "translate-x-4" : "translate-x-0"
+                        local.integrations?.customAgentEnabled ? "translate-x-4" : "translate-x-0"
                       }`}
                     />
                   </button>
                 </div>
+
+                {local.integrations?.customAgentEnabled && (
+                  <div className="space-y-3 pt-2 border-t border-white/5 animate-slide-up">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">NVIDIA API Key</label>
+                      <input
+                        type="password"
+                        value={local.integrations?.nvidiaApiKey || ""}
+                        onChange={e => {
+                          const integrations = local.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "", customAgentEnabled: false, nvidiaApiKey: "", nvidiaModel: "meta/llama-3.3-70b-instruct" };
+                          setLocal({
+                            ...local,
+                            integrations: {
+                              ...integrations,
+                              nvidiaApiKey: e.target.value
+                            }
+                          });
+                        }}
+                        className="w-full px-3.5 py-2 rounded-xl text-xs text-white focus:outline-none transition-all font-mono animate-slide-up"
+                        style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.09)" }}
+                        placeholder="nvapi-..."
+                        onFocus={e => (e.currentTarget.style.border = "1px solid rgba(139,92,246,0.5)")}
+                        onBlur={e => (e.currentTarget.style.border = "1px solid rgba(255,255,255,0.09)")}
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">NVIDIA NIM Model</label>
+                      <select
+                        value={local.integrations?.nvidiaModel || "meta/llama-3.3-70b-instruct"}
+                        onChange={e => {
+                          const integrations = local.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "", customAgentEnabled: false, nvidiaApiKey: "", nvidiaModel: "meta/llama-3.3-70b-instruct" };
+                          setLocal({
+                            ...local,
+                            integrations: {
+                              ...integrations,
+                              nvidiaModel: e.target.value
+                            }
+                          });
+                        }}
+                        className="w-full px-3.5 py-2 rounded-xl text-xs text-white focus:outline-none transition-all bg-slate-900 border border-white/10"
+                        style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.09)" }}
+                      >
+                        <option value="meta/llama-3.3-70b-instruct" className="bg-slate-900 text-white">Llama 3.3 70B Instruct (Recommended)</option>
+                        <option value="qwen/qwen3-coder-480b-a35b-instruct" className="bg-slate-900 text-white">Qwen 3 Coder 480B Instruct</option>
+                        <option value="deepseek-ai/deepseek-coder-6.7b-instruct" className="bg-slate-900 text-white">DeepSeek Coder 6.7B Instruct</option>
+                        <option value="nvidia/llama-3.1-nemotron-70b-instruct" className="bg-slate-900 text-white">Llama 3.1 Nemotron 70B</option>
+                        <option value="mistralai/mixtral-8x22b-instruct-v0.1" className="bg-slate-900 text-white">Mixtral 8x22B Instruct</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

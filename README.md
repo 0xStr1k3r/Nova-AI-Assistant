@@ -123,6 +123,27 @@ When the integration is enabled, Nova will be aware of your vault directory. If 
 
 ---
 
+## Custom NVIDIA NIM Coding Agent Integration
+
+Nova includes a fully custom, local autonomous coding agent loop powered by the **NVIDIA NIM API** (OpenAI-compatible endpoints). It allows you to delegate complex multi-step coding tasks, file writing, terminal execution, and testing.
+
+### Setting Up NVIDIA Coding Agent
+1. Click the **Gear icon** in the UI to open the Settings panel.
+2. Navigate to the **Integrations** tab.
+3. Toggle the **Custom NVIDIA Coding Agent** to **ON**.
+4. Enter your **NVIDIA API Key** (you can get one from the [NVIDIA API Catalog](https://build.nvidia.com/)).
+5. Select a model from the dropdown (e.g. `meta/llama-3.3-70b-instruct` or `qwen/qwen3-coder-480b-a35b-instruct`).
+6. Click **Save**.
+
+### How it Works
+When Nova is asked to write or debug code, it will automatically invoke the custom background agent.
+- The agent runs a local **Reasoning + Action (ReAct)** loop.
+- It can read/write files, list directories, and execute shell commands/run tests locally within the project root folder.
+- All actions and reasoning steps are written to `/home/chiru/.config/nova-voice-assistant/coding_agent_status.log` and streamed in real-time to the interactive Activity Log in the client UI.
+- You can poll progress at any time using the `getCodingAgentStatus` tool.
+
+---
+
 ## Advanced Browser Automation Suite (openBrowser)
 
 Nova is equipped with a fully decoupled, highly modular **Browser Automation Engine** inside `browser_automation/` powered by `puppeteer-core`. The browser layer is split into **engine, navigation, tabs, human-like input, content extraction, media control, understanding, memory, and vision** modules to keep everything clean and extensible. Instead of downloading heavy, resource-intensive third-party browsers (which take 500MB+ in size), it hooks natively into your **existing system Chromium browser** (`/usr/bin/chromium`), ensuring a virtually non-existent CPU and storage footprint.

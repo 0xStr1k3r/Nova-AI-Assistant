@@ -76,11 +76,13 @@ import {
   typeTextAction,
   pressKeyAction,
 } from "./src/server/gui-automation";
+import { runCustomNvidiaAgent } from "./agent/nvidia-agent";
 
 const execAsync = util.promisify(exec);
 
 // Background agent execution state
 let activeAgentProcess: any = null;
+let activeAgentRunning = false;
 let activeAgentName = "";
 let activeAgentPrompt = "";
 let activeAgentStartTime = 0;
@@ -554,21 +556,16 @@ ${recentConversationsContext}`;
 
       functionDeclarations.push({
         name: "runCodingAgent",
-        description: "Executes an advanced AI developer CLI agent ('opencode', 'claude', or 'copilot') headlessly to complete complex coding, multi-file writing, refactoring, testing, or debugging tasks. Runs in non-interactive mode with high timeouts.",
+        description: "Executes the custom local autonomous AI developer agent powered by NVIDIA NIM in the background to complete complex coding, multi-file writing, refactoring, testing, or debugging tasks. Runs asynchronously.",
         parameters: {
           type: Type.OBJECT,
           properties: {
-            agent: {
-              type: Type.STRING,
-              enum: ["opencode", "claude", "copilot"],
-              description: "The AI coding agent tool to execute.",
-            },
             prompt: {
               type: Type.STRING,
               description: "The complete, detailed coding instruction/prompt to send to the developer agent.",
             },
           },
-          required: ["agent", "prompt"],
+          required: ["prompt"],
         },
       });
 
@@ -946,20 +943,16 @@ ${recentConversationsContext}`;
                     response: { result: resultStr },
                   });
                 } else if (call.name === "runCodingAgent") {
-                  const agent = (call.args as any).agent as string;
                   const prompt = (call.args as any).prompt as string;
                   
-                  logTurn("AGENT", `Requested ${agent}: ${prompt}`);
+                  logTurn("AGENT", `Requested NVIDIA agent: ${prompt}`);
 
                   // Check if another coding agent is already running
-                  let isAlreadyRunning = false;
-                  if (activeAgentProcess && activeAgentProcess.exitCode === null) {
-                    isAlreadyRunning = true;
-                  }
+                  let isAlreadyRunning = activeAgentRunning;
 
                   if (isAlreadyRunning) {
-                    const errorMsg = `⚠️ Spawning blocked: An active developer coding agent (${activeAgentName}) is currently running in the background. Wait for the current agent task to complete or query getCodingAgentStatus.`;
-                    console.log(`[AGENT BLOCKED] Spawning ${agent} blocked by active running ${activeAgentName}`);
+                    const errorMsg = `⚠️ Spawning blocked: An active developer coding agent is currently running in the background. Wait for the current agent task to complete or query getCodingAgentStatus.`;
+                    console.log(`[AGENT BLOCKED] Spawning NVIDIA agent blocked by active running agent`);
                     
                     toolResponses.push({
                       id: call.id,
@@ -974,66 +967,55 @@ ${recentConversationsContext}`;
                     // Notify client that coding agent is starting
                     clientWs.send(JSON.stringify({
                       action: "agent_start",
-                      agent,
+                      agent: "nvidia",
                       prompt
                     }));
 
-                    let command = "";
-                    if (agent === "opencode") {
-                      command = `opencode run --dangerously-skip-permissions ${JSON.stringify(prompt)}`;
-                    } else if (agent === "claude") {
-                      command = `export PAGER=cat && claude --non-interactive -p ${JSON.stringify(prompt)}`;
-                    } else if (agent === "copilot") {
-                      command = `export PAGER=cat && copilot explain ${JSON.stringify(prompt)}`;
-                    }
+                    const db = getDb();
+                    const apiKey = db.integrations?.nvidiaApiKey || "";
+                    const model = db.integrations?.nvidiaModel || "meta/llama-3.3-70b-instruct";
 
-                    // Write Start Header to status file
-                    const startHeader = `================================================
-CODING AGENT START: ${agent.toUpperCase()}
-TIME: ${new Date().toISOString()}
-PROMPT: ${prompt}
-================================================\n\n`;
-                    try {
-                      fs.writeFileSync(STATUS_LOG_PATH, startHeader, "utf-8");
-                    } catch (e: any) {
-                      console.error(`Failed to write status header: ${e.message}`);
-                    }
-
-                    // Execute command in the background, redirecting stdout/stderr directly to file!
-                    const bgCommand = `${command} >> ${STATUS_LOG_PATH} 2>&1`;
-                    console.log(`[AGENT SPAWN] Spawning ${agent} in the background: ${bgCommand}`);
-                    
-                    activeAgentProcess = exec(bgCommand, {
-                      maxBuffer: 10 * 1024 * 1024, // 10MB buffer
-                    });
-                    activeAgentName = agent;
+                    activeAgentRunning = true;
+                    activeAgentName = "nvidia";
                     activeAgentPrompt = prompt;
                     activeAgentStartTime = Date.now();
 
-                    // Non-blocking exit handler
-                    activeAgentProcess.on("exit", (code: number) => {
-                      const exitMsg = `\n\n================================================
-CODING AGENT FINISHED
-TIME: ${new Date().toISOString()}
-EXIT CODE: ${code}
-SUCCESS: ${code === 0}
-================================================\n`;
-                      try {
-                        fs.appendFileSync(STATUS_LOG_PATH, exitMsg, "utf-8");
-                      } catch (e: any) {
-                        console.error(`Failed to append status footer: ${e.message}`);
+                    // Run the custom NVIDIA agent asynchronously in the background
+                    runCustomNvidiaAgent(prompt, apiKey, model, (msg) => {
+                      // Broadcast agent progress log to client
+                      if (clientWs.readyState === 1 /* OPEN */) {
+                        clientWs.send(JSON.stringify({
+                          action: "agent_log",
+                          agent: "nvidia",
+                          message: msg
+                        }));
                       }
-
-                      // Also notify WebSocket client!
-                      clientWs.send(JSON.stringify({
-                        action: "agent_end",
-                        agent,
-                        success: code === 0,
-                      }));
-                      console.log(`[AGENT EXIT] Background coding agent ${agent} finished with code ${code}`);
+                    }).then((summary) => {
+                      activeAgentRunning = false;
+                      // Notify client that coding agent has finished
+                      if (clientWs.readyState === 1 /* OPEN */) {
+                        clientWs.send(JSON.stringify({
+                          action: "agent_end",
+                          agent: "nvidia",
+                          success: true,
+                          summary
+                        }));
+                      }
+                      console.log(`[AGENT SUCCESS] Custom NVIDIA Coding Agent finished. Summary: ${summary}`);
+                    }).catch((err) => {
+                      activeAgentRunning = false;
+                      if (clientWs.readyState === 1 /* OPEN */) {
+                        clientWs.send(JSON.stringify({
+                          action: "agent_end",
+                          agent: "nvidia",
+                          success: false,
+                          error: err.message
+                        }));
+                      }
+                      console.error(`[AGENT ERROR] Custom NVIDIA Coding Agent failed:`, err);
                     });
 
-                    const spawnResult = `🤖 Successfully spawned the ${agent.toUpperCase()} coding agent in the background to handle the task. All logs and progress are being written to ${STATUS_LOG_PATH}. You can check its progress using the getCodingAgentStatus tool at any time (recommend checking every minute). Do not block; you can reply to the user normally now and tell them the agent is running in the background.`;
+                    const spawnResult = `🤖 Successfully spawned the NVIDIA coding agent in the background to handle the task using model "${model}". All logs and progress are being written to ${STATUS_LOG_PATH}. You can check its progress using the getCodingAgentStatus tool at any time. Do not block; you can reply to the user normally now and tell them the agent is running in the background.`;
 
                     toolResponses.push({
                       id: call.id,
@@ -1047,10 +1029,7 @@ SUCCESS: ${code === 0}
                 } else if (call.name === "getCodingAgentStatus") {
                   logTurn("AGENT_STATUS", "Checking background agent status");
                   
-                  let isRunning = false;
-                  if (activeAgentProcess && activeAgentProcess.exitCode === null) {
-                    isRunning = true;
-                  }
+                  let isRunning = activeAgentRunning;
 
                   let recentLogs = "No active logs found.";
                   if (fs.existsSync(STATUS_LOG_PATH)) {

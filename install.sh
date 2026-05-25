@@ -360,43 +360,7 @@ setup_godo_integration() {
     fi
 }
 
-# Optional Developer CLI Integrations
-setup_cli_integrations() {
-    print_header "Optional Developer CLI Integrations"
-    
-    # 1. OpenCode CLI
-    read -p "Would you like to install the OpenCode Developer Agent CLI (opencode-ai) globally? (y/n): " opencode_choice
-    if [[ "$opencode_choice" =~ ^[Yy]$ ]]; then
-        print_info "Installing opencode-ai globally via npm (requires sudo)..."
-        if sudo npm install -g opencode-ai; then
-            print_success "OpenCode CLI installed successfully!"
-        else
-            print_error "Failed to install opencode-ai. You can install it manually using: sudo npm install -g opencode-ai"
-        fi
-    fi
 
-    # 2. Claude Code CLI
-    read -p "Would you like to install Anthropic's Claude Code CLI (@anthropic-ai/claude-code) globally? (y/n): " claude_choice
-    if [[ "$claude_choice" =~ ^[Yy]$ ]]; then
-        print_info "Installing @anthropic-ai/claude-code globally via npm (requires sudo)..."
-        if sudo npm install -g @anthropic-ai/claude-code; then
-            print_success "Claude Code CLI installed successfully!"
-        else
-            print_error "Failed to install Claude Code CLI. You can install it manually using: sudo npm install -g @anthropic-ai/claude-code"
-        fi
-    fi
-
-    # 3. GitHub Copilot CLI
-    read -p "Would you like to install GitHub Copilot CLI (@github/copilot-cli) globally? (y/n): " copilot_choice
-    if [[ "$copilot_choice" =~ ^[Yy]$ ]]; then
-        print_info "Installing @github/copilot-cli globally via npm (requires sudo)..."
-        if sudo npm install -g @github/copilot-cli; then
-            print_success "GitHub Copilot CLI installed successfully!"
-        else
-            print_error "Failed to install GitHub Copilot CLI. You can install it manually using: sudo npm install -g @github/copilot-cli"
-        fi
-    fi
-}
 
 # Build production bundle
 build_project() {
@@ -479,7 +443,6 @@ main() {
             setup_env
             setup_permissions_and_service
             setup_godo_integration
-            setup_cli_integrations
             build_project
             
             print_header "Installation Finished"
@@ -520,7 +483,6 @@ main() {
             setup_env
             setup_permissions_and_service
             setup_godo_integration
-            setup_cli_integrations
             build_project
             
             print_success "Browser App target configuration completed successfully!"

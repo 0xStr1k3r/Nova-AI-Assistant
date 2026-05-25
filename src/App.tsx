@@ -384,6 +384,9 @@ export default function App() {
         if (msg.action === "agent_start") {
           addLog(`🤖 Delegating task to ${msg.agent.toUpperCase()} Agent: "${msg.prompt}"`, "info");
         }
+        if (msg.action === "agent_log") {
+          addLog(`[Agent Log] ${msg.message}`, "info");
+        }
         if (msg.action === "agent_end") {
           if (msg.success) {
             addLog(`✅ ${msg.agent.toUpperCase()} Agent completed the coding task!`, "success");

@@ -36,7 +36,9 @@ export interface IntegrationsConfig {
   godoEnabled: boolean;
   obsidianEnabled: boolean;
   obsidianPath: string;
-  opencodeEnabled: boolean;
+  customAgentEnabled?: boolean;
+  nvidiaApiKey?: string;
+  nvidiaModel?: string;
 }
 
 export interface NovaConfig {
@@ -165,7 +167,9 @@ const defaultConfig: NovaConfig = {
     godoEnabled: false,
     obsidianEnabled: false,
     obsidianPath: "",
-    opencodeEnabled: false,
+    customAgentEnabled: false,
+    nvidiaApiKey: "",
+    nvidiaModel: "meta/llama-3.3-70b-instruct",
   },
 };
 
@@ -232,10 +236,20 @@ export function getDb(): NovaConfig {
           godoEnabled: false,
           obsidianEnabled: false,
           obsidianPath: "",
-          opencodeEnabled: false,
+          customAgentEnabled: false,
+          nvidiaApiKey: "",
+          nvidiaModel: "meta/llama-3.3-70b-instruct",
         };
-      } else if (merged.integrations.opencodeEnabled === undefined) {
-        merged.integrations.opencodeEnabled = false;
+      } else {
+        if (merged.integrations.customAgentEnabled === undefined) {
+          merged.integrations.customAgentEnabled = false;
+        }
+        if (merged.integrations.nvidiaApiKey === undefined) {
+          merged.integrations.nvidiaApiKey = "";
+        }
+        if (merged.integrations.nvidiaModel === undefined) {
+          merged.integrations.nvidiaModel = "meta/llama-3.3-70b-instruct";
+        }
       }
 
       if (envWakeWord) merged.wakeWord = envWakeWord;
