@@ -1,6 +1,6 @@
 # Nova — AI Voice Assistant
 
-Nova is a high-tech personal AI voice assistant powered by the **Gemini Live API**. It features real-time voice conversation, dynamic operating modes, a smart memory database, and automatic web-search/page-extraction capabilities.
+Nova is a high-tech personal AI voice assistant powered by the **Gemini Live API**. It features real-time voice conversation, browser-native wake-word and microphone access, dynamic operating modes, a smart memory database, and automatic web-search/page-extraction capabilities.
 
 ---
 
@@ -10,6 +10,7 @@ Nova is a high-tech personal AI voice assistant powered by the **Gemini Live API
 - 🌐 **Dynamic Web Search**: Automatic web access for news, current affairs, or celebrity queries using SearXNG nodes (with Wikipedia + DuckDuckGo fallback).
 - 🧠 **Persistent Memory**: A token-efficient fact extraction system that identifies your preferences and habits, storing them dynamically across sessions.
 - 🎭 **8 Operating Modes**: Select custom restriction levels (Assistant, Focus, Deep Dive, Sysadmin, Dev, Unrestricted, Creative, Tutor) in the settings.
+- 🌐 **Browser-Native Pipeline**: Voice pipeline and wake word detection run entirely in-browser using standard HTML5 Speech APIs. Access via any web browser at `http://localhost:22222`.
 
 ## Prerequisites
 
@@ -35,12 +36,6 @@ sudo dnf install -y nodejs npm golang
 
 ## Quick Start Installation
 
-> [!IMPORTANT]
-> **Installation Target Selection & Ports**
-> When you run `./install.sh`, you will be prompted to select one of the following installation targets:
-> 1. **Browser App**: Best for general browser access. Runs the assistant server on port **`22222`**. The voice pipeline and wake word detection run entirely in-browser using standard HTML5 Speech APIs. Access via any web browser at `http://localhost:22222`.
-> 2. **Desktop App (Development Stage)**: Best for native system integration. Runs on port **`22233`**. It compiles an ultra-lightweight C++ desktop container (GTK3/WebKitGTK) and sets up a native Rust audio engine daemon (`nova-audio-desktop.service`) for offline wake-word and microphone access. Registers a searchable launcher shortcut in your system application menu.
-
 Run the unified installer to handle Node dependencies, environment variables, system permissions, and the systemd background daemon.
 
 ```bash
@@ -62,7 +57,7 @@ During installation, you will be prompted to paste your **Gemini API Key**.
 To get a free key, visit the **[Google AI Studio API Keys Page](https://aistudio.google.com)**.
 *If you skip this step, you can manually add the key later inside the `.env` file in the project root: `GEMINI_API_KEY=your_key_here`.*
 
-Once setup finishes, open your browser and navigate to the configured port (e.g. **[http://localhost:22222](http://localhost:22222)** for the Web/Browser target, or **[http://localhost:22233](http://localhost:22233)** for the Desktop target).
+Once setup finishes, open your browser and navigate to **[http://localhost:22222](http://localhost:22222)**.
 
 ---
 
@@ -90,14 +85,11 @@ Once setup finishes, open your browser and navigate to the configured port (e.g.
 
 Nova features optional out-of-the-box integration with the **[GoDo CLI Task Manager](https://github.com/0xStr1k3r/GoDo)**.
 
-### What is GoDo?
-GoDo is a terminal-based command-line interface (CLI) and text user interface (TUI) task management tool written in Go. It allows users to track tasks, lists, and items locally on their host machine.
-
 ### Setup and Integration
 During installation (`./install.sh`), you will be prompted to integrate GoDo:
-1. **Interactive Integration Prompt**: The script will ask: `Do you use the GoDo CLI task manager (https://github.com/0xStr1k3r/GoDo)? Integrate it? (y/n)`.
-2. **Auto-Installation**: If you select `y`, the installer will check if Go is installed. If so, it will clone the GoDo repository, build it locally, and install it globally as `godo` (in `/usr/local/bin/godo`). If Go is missing, it will provide instructions for manual installation.
-3. **Smart Memory Injector**: The installer automatically inserts a detailed preference entry into Nova's memory database detailing GoDo command usage.
+1. **Interactive Integration Prompt**: The script will ask if you would like to integrate GoDo.
+2. **Auto-Installation**: If you select `y`, the installer will check if Go is installed. If so, it will clone the GoDo repository, build it locally, and install it globally as `godo` (in `/usr/local/bin/godo`).
+3. **Smart Memory Injector**: The installer automatically inserts GoDo CLI task management instructions into Nova's memory database.
 
 ### How to Use
 When Nova is in a mode that permits system command execution (such as **Assistant**, **Sysadmin**, **Dev**, or **Unrestricted**), you can manage your tasks hands-free using natural language voice commands:
@@ -141,16 +133,15 @@ Although the background service holds administrative/root privileges, command ex
 
 ## Daemon & Service Management
 
-The installer configures **Systemd User Services** (running under suffixes `-web` and/or `-desktop` based on your installation target) so Nova and its audio engine run in the background.
+The installer configures the **Systemd User Service** so Nova runs in the background.
 
-### Available Services:
-* **Web Services (Port 22222)**: `nova-assistant-web.service` & `nova-audio-web.service`
-* **Desktop Services (Port 22233)**: `nova-assistant-desktop.service` & `nova-audio-desktop.service`
+### Service Name:
+* **Web Service (Port 22222)**: `nova-assistant-web.service`
 
-| Action | Command (replace `<service>` with the active service name) |
+| Action | Command |
 | :--- | :--- |
-| **Check Status** | `systemctl --user status <service>` |
-| **Start Service** | `systemctl --user start <service>` |
-| **Stop Service** | `systemctl --user stop <service>` |
-| **Restart Service** | `systemctl --user restart <service>` |
-| **View Live Logs** | `journalctl --user -u <service> -f` |
+| **Check Status** | `systemctl --user status nova-assistant-web.service` |
+| **Start Service** | `systemctl --user start nova-assistant-web.service` |
+| **Stop Service** | `systemctl --user stop nova-assistant-web.service` |
+| **Restart Service** | `systemctl --user restart nova-assistant-web.service` |
+| **View Live Logs** | `journalctl --user -u nova-assistant-web.service -f` |

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ##############################################################################
-# Nova AI Assistant - Consolidated Installation & Setup Script
+# Nova AI Assistant - Consolidated Installation & Setup Script (Web Target Only)
 # This script handles dependencies, permissions, and background daemon setup.
 ##############################################################################
 
@@ -15,9 +15,6 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
-
-# Installation target (browser or desktop)
-INSTALL_TARGET=""
 
 # Helper Functions
 print_header() {
@@ -57,34 +54,9 @@ check_prerequisites() {
         exit 1
     fi
     print_success "npm: $(npm -v)"
-    
-    if ! command -v cargo &> /dev/null; then
-        print_error "Rust/Cargo is not installed."
-        echo "Please install Rust (v1.70+) from https://rustup.rs/ or via your package manager."
-        exit 1
-    fi
-    print_success "Cargo: $(cargo --version)"
 }
 
-# Select installation target
-select_installation_target() {
-    print_header "Choose Installation Target"
-    echo -e "How would you like to install the Nova Assistant?"
-    echo -e "1) Browser App (Runs on port 22222)"
-    echo -e "2) Desktop App (Development Stage - Runs on port 22233)"
-    read -p "Select option (1-2) [default: 1]: " target_choice
-    target_choice=${target_choice:-1}
-    
-    if [ "$target_choice" -eq 2 ]; then
-        INSTALL_TARGET="desktop"
-        print_info "Selected Installation Target: Desktop App (Development Stage)"
-    else
-        INSTALL_TARGET="browser"
-        print_info "Selected Installation Target: Browser App"
-    fi
-}
-
-# Install system dependencies based on distro and installation target
+# Install system dependencies based on distro
 install_system_dependencies() {
     print_header "System Package Detection & Installation"
     
@@ -119,61 +91,37 @@ install_system_dependencies() {
     case "$DISTRO_ID" in
         ubuntu|debian)
             install_cmd="sudo apt-get update && sudo apt-get install -y"
-            pkgs=(build-essential pkg-config libasound2-dev git curl)
+            pkgs=(build-essential pkg-config git curl)
             
             if ! command -v node &> /dev/null; then
                 pkgs+=(nodejs npm)
-            fi
-            if ! command -v cargo &> /dev/null; then
-                pkgs+=(cargo rustc)
-            fi
-            if [ "$INSTALL_TARGET" = "desktop" ] || [ "$INSTALL_TARGET" = "both" ]; then
-                pkgs+=(libgtk-3-dev libwebkit2gtk-4.1-dev gstreamer1.0-plugins-good gstreamer1.0-plugins-base gstreamer1.0-alsa gstreamer1.0-pulseaudio)
             fi
             ;;
             
         fedora)
             install_cmd="sudo dnf install -y"
-            pkgs=(gcc gcc-c++ make pkgconfig alsa-lib-devel git curl)
+            pkgs=(gcc gcc-c++ make pkgconfig git curl)
             
             if ! command -v node &> /dev/null; then
                 pkgs+=(nodejs npm)
-            fi
-            if ! command -v cargo &> /dev/null; then
-                pkgs+=(cargo rust)
-            fi
-            if [ "$INSTALL_TARGET" = "desktop" ] || [ "$INSTALL_TARGET" = "both" ]; then
-                pkgs+=(gtk3-devel webkit2gtk4.1-devel gstreamer1-plugins-good gstreamer1-plugins-base)
             fi
             ;;
             
         arch)
             install_cmd="sudo pacman -S --noconfirm --needed"
-            pkgs=(base-devel pkgconf alsa-lib git curl)
+            pkgs=(base-devel pkgconf git curl)
             
             if ! command -v node &> /dev/null; then
                 pkgs+=(nodejs npm)
-            fi
-            if ! command -v cargo &> /dev/null; then
-                pkgs+=(rust)
-            fi
-            if [ "$INSTALL_TARGET" = "desktop" ] || [ "$INSTALL_TARGET" = "both" ]; then
-                pkgs+=(gtk3 webkit2gtk-4.1 gst-plugins-good gst-plugins-base gst-plugin-pipewire pulseaudio-alsa)
             fi
             ;;
             
         rhel)
             install_cmd="sudo dnf install -y"
-            pkgs=(gcc gcc-c++ make pkgconfig alsa-lib-devel git curl)
+            pkgs=(gcc gcc-c++ make pkgconfig git curl)
             
             if ! command -v node &> /dev/null; then
                 pkgs+=(nodejs npm)
-            fi
-            if ! command -v cargo &> /dev/null; then
-                pkgs+=(cargo rust)
-            fi
-            if [ "$INSTALL_TARGET" = "desktop" ] || [ "$INSTALL_TARGET" = "both" ]; then
-                pkgs+=(gtk3-devel webkit2gtk4.1-devel gstreamer1-plugins-good gstreamer1-plugins-base)
             fi
             ;;
             
@@ -181,28 +129,19 @@ install_system_dependencies() {
             # Check distro-like fallback
             if [[ "$DISTRO_LIKE" =~ "debian" ]] || [[ "$DISTRO_LIKE" =~ "ubuntu" ]]; then
                 install_cmd="sudo apt-get update && sudo apt-get install -y"
-                pkgs=(build-essential pkg-config libasound2-dev git curl)
+                pkgs=(build-essential pkg-config git curl)
                 if ! command -v node &> /dev/null; then pkgs+=(nodejs npm); fi
-                if ! command -v cargo &> /dev/null; then pkgs+=(cargo rustc); fi
-                if [ "$INSTALL_TARGET" = "desktop" ] || [ "$INSTALL_TARGET" = "both" ]; then pkgs+=(libgtk-3-dev libwebkit2gtk-4.1-dev gstreamer1.0-plugins-good gstreamer1.0-plugins-base gstreamer1.0-alsa gstreamer1.0-pulseaudio); fi
             elif [[ "$DISTRO_LIKE" =~ "fedora" ]] || [[ "$DISTRO_LIKE" =~ "rhel" ]]; then
                 install_cmd="sudo dnf install -y"
-                pkgs=(gcc gcc-c++ make pkgconfig alsa-lib-devel git curl)
+                pkgs=(gcc gcc-c++ make pkgconfig git curl)
                 if ! command -v node &> /dev/null; then pkgs+=(nodejs npm); fi
-                if ! command -v cargo &> /dev/null; then pkgs+=(cargo rust); fi
-                if [ "$INSTALL_TARGET" = "desktop" ] || [ "$INSTALL_TARGET" = "both" ]; then pkgs+=(gtk3-devel webkit2gtk4.1-devel gstreamer1-plugins-good gstreamer1-plugins-base); fi
             elif [[ "$DISTRO_LIKE" =~ "arch" ]]; then
                 install_cmd="sudo pacman -S --noconfirm --needed"
-                pkgs=(base-devel pkgconf alsa-lib git curl)
+                pkgs=(base-devel pkgconf git curl)
                 if ! command -v node &> /dev/null; then pkgs+=(nodejs npm); fi
-                if ! command -v cargo &> /dev/null; then pkgs+=(rust); fi
-                if [ "$INSTALL_TARGET" = "desktop" ] || [ "$INSTALL_TARGET" = "both" ]; then pkgs+=(gtk3 webkit2gtk-4.1 gst-plugins-good gst-plugins-base gst-plugin-pipewire pulseaudio-alsa); fi
             else
                 print_warning "Unable to auto-detect a supported package manager for distribution: $DISTRO_ID"
-                print_warning "Please manually install build tools, pkg-config, and ALSA development headers."
-                if [ "$INSTALL_TARGET" = "desktop" ] || [ "$INSTALL_TARGET" = "both" ]; then
-                    print_warning "Please also install GTK3, WebKitGTK, and GStreamer plugins manually."
-                fi
+                print_warning "Please manually install build tools, pkg-config, git, and curl."
                 return
             fi
             ;;
@@ -229,7 +168,7 @@ setup_env() {
             cp .env.example .env
         else
             echo "GEMINI_API_KEY=YOUR_API_KEY" > .env
-            echo "PORT=3000" >> .env
+            echo "PORT=22222" >> .env
         fi
     fi
 
@@ -249,6 +188,13 @@ setup_env() {
         fi
     else
         print_success "Gemini API Key is set in .env"
+    fi
+
+    # Force port to 22222 in .env since we only run web now
+    if grep -q "^PORT=" .env; then
+        sed -i "s|^PORT=.*|PORT=22222|" .env
+    else
+        echo "PORT=22222" >> .env
     fi
 }
 
@@ -284,14 +230,7 @@ setup_permissions_and_service() {
     
     print_info "Configuring settings for user '$USER_NAME' at '$PROJECT_DIR'"
     
-    # 1. Microphone access
-    print_info "Adding '$USER_NAME' to audio groups..."
-    sudo usermod -aG audio "$USER_NAME"
-    if getent group pulse-access > /dev/null 2>&1; then
-        sudo usermod -aG pulse-access "$USER_NAME"
-    fi
-    
-    # 2. Passwordless sudo for voice commands
+    # 1. Passwordless sudo for voice commands
     print_info "Configuring passwordless sudo for voice assistant command execution..."
     SUDOERS_FILE="/etc/sudoers.d/nova-voice-assistant"
     sudo bash -c "cat << 'EOF' > $SUDOERS_FILE
@@ -300,15 +239,12 @@ $USER_NAME ALL=(ALL) NOPASSWD: ALL
 EOF"
     sudo chmod 0440 "$SUDOERS_FILE"
     
-    # 3. Session lingering
+    # 2. Session lingering
     print_info "Enabling user session lingering..."
     sudo loginctl enable-linger "$USER_NAME"
     
-    print_info "Building native Rust audio engine (nova-core)..."
-    (cd "$PROJECT_DIR/nova-core" && cargo build --release)
-    
-    # 4. Systemd user service
-    print_info "Configuring systemd user services..."
+    # 3. Systemd user service
+    print_info "Configuring systemd user service..."
     SYSTEMD_USER_DIR="/home/$USER_NAME/.config/systemd/user"
     
     if [ -d "/home/$USER_NAME/.config/systemd" ]; then
@@ -319,8 +255,9 @@ EOF"
     
     # Remove deprecated single service files to avoid conflicts
     rm -f "$SYSTEMD_USER_DIR/nova-assistant.service" "$SYSTEMD_USER_DIR/nova-audio.service"
+    rm -f "$SYSTEMD_USER_DIR/nova-assistant-desktop.service" "$SYSTEMD_USER_DIR/nova-audio-desktop.service"
     
-    # 4a. Web Services (Port 22222)
+    # Web Services (Port 22222)
     cat << EOF > "$SYSTEMD_USER_DIR/nova-assistant-web.service"
 [Unit]
 Description=Nova AI Assistant Web Daemon (Backend & UI)
@@ -340,45 +277,6 @@ Environment="PORT=22222"
 WantedBy=default.target
 EOF
 
-    # 4b. Desktop Services (Port 22233)
-    cat << EOF > "$SYSTEMD_USER_DIR/nova-assistant-desktop.service"
-[Unit]
-Description=Nova AI Assistant Desktop Daemon (Backend & UI)
-After=network.target
-
-[Service]
-Type=simple
-WorkingDirectory=$PROJECT_DIR
-ExecStart=/usr/bin/npm run dev
-Restart=always
-RestartSec=5
-StandardOutput=journal
-StandardError=journal
-Environment="PORT=22233"
-
-[Install]
-WantedBy=default.target
-EOF
-
-    cat << EOF > "$SYSTEMD_USER_DIR/nova-audio-desktop.service"
-[Unit]
-Description=Nova Native Audio Engine Desktop (Rust)
-After=network.target sound.target nova-assistant-desktop.service
-
-[Service]
-Type=simple
-WorkingDirectory=$PROJECT_DIR/nova-core
-ExecStart=$PROJECT_DIR/nova-core/target/release/nova-core
-Restart=always
-RestartSec=5
-StandardOutput=journal
-StandardError=journal
-Environment="LD_LIBRARY_PATH=/usr/lib" "PORT=22233"
-
-[Install]
-WantedBy=default.target
-EOF
-
     sudo chown -R "$USER_NAME:$USER_NAME" "/home/$USER_NAME/.config/systemd"
     
     print_info "Enabling and starting systemd services..."
@@ -388,23 +286,10 @@ EOF
     systemctl --user daemon-reexec
     systemctl --user daemon-reload
     
-    # Stop all to prevent conflicts, then start correct ones
-    systemctl --user disable nova-assistant.service nova-audio.service nova-assistant-web.service nova-audio-web.service nova-assistant-desktop.service nova-audio-desktop.service &> /dev/null || true
-    systemctl --user stop nova-assistant.service nova-audio.service nova-assistant-web.service nova-audio-web.service nova-assistant-desktop.service nova-audio-desktop.service &> /dev/null || true
+    systemctl --user enable nova-assistant-web.service
+    systemctl --user restart nova-assistant-web.service
     
-    local services_to_start=()
-    if [ "$INSTALL_TARGET" = "browser" ]; then
-        services_to_start=(nova-assistant-web.service)
-    elif [ "$INSTALL_TARGET" = "desktop" ]; then
-        services_to_start=(nova-assistant-desktop.service nova-audio-desktop.service)
-    else # both
-        services_to_start=(nova-assistant-web.service nova-assistant-desktop.service nova-audio-desktop.service)
-    fi
-    
-    systemctl --user enable "${services_to_start[@]}"
-    systemctl --user restart "${services_to_start[@]}"
-    
-    print_success "System permissions and background services configured successfully!"
+    print_success "System permissions and background service configured successfully!"
 }
 
 # Optional GoDo integration
@@ -482,62 +367,13 @@ build_project() {
     print_success "Build completed."
 }
 
-# Build native Desktop App (C++ WebKitGTK Native)
-build_desktop_app() {
-    print_header "Creating Native Desktop App (Development Stage)"
-    
-    print_info "Compiling native C++ desktop wrapper..."
-    local compiled=false
-    if command -v pkg-config &> /dev/null; then
-        if pkg-config --exists webkit2gtk-4.1; then
-            print_info "Compiling with webkit2gtk-4.1..."
-            g++ "$PROJECT_DIR/desktop_app.cpp" -o "$PROJECT_DIR/desktop_app" $(pkg-config --cflags --libs gtk+-3.0 webkit2gtk-4.1) && compiled=true
-        elif pkg-config --exists webkit2gtk-4.0; then
-            print_info "Compiling with webkit2gtk-4.0..."
-            g++ "$PROJECT_DIR/desktop_app.cpp" -o "$PROJECT_DIR/desktop_app" $(pkg-config --cflags --libs gtk+-3.0 webkit2gtk-4.0) && compiled=true
-        fi
-    fi
-
-    if [ "$compiled" = false ]; then
-        print_warning "Failed to compile C++ native webview wrapper. Falling back to Python PyQt6..."
-        # Fallback to copy PyQt6 app if C++ compile fails (unlikely, but safe)
-        cp "$PROJECT_DIR/desktop_app.py" "$PROJECT_DIR/desktop_app"
-        chmod +x "$PROJECT_DIR/desktop_app"
-    else
-        print_success "C++ native desktop app compiled successfully!"
-    fi
-
-    print_info "Creating desktop shortcut..."
-    DESKTOP_FILE="$HOME/.local/share/applications/nova.desktop"
-    mkdir -p "$HOME/.local/share/applications"
-    
-    ICON_PATH="$PROJECT_DIR/nova_icon.png"
-
-    cat << EOF > "$DESKTOP_FILE"
-[Desktop Entry]
-Name=Nova AI Assistant (Development Stage)
-Comment=High-tech personal AI voice assistant
-Exec=$PROJECT_DIR/desktop_app
-Icon=$ICON_PATH
-Terminal=false
-Type=Application
-Categories=Utility;AI;
-EOF
-    
-    chmod +x "$PROJECT_DIR/desktop_app"
-    chmod +x "$DESKTOP_FILE"
-    update-desktop-database "$HOME/.local/share/applications" &> /dev/null || true
-    
-    print_success "Native Desktop App (Development Stage) configured and shortcut created at $DESKTOP_FILE"
-}
-
 # Run the app interactively (if requested)
 run_app() {
     print_header "Running Application"
     echo -e "How would you like to run the assistant now?"
-    echo "1) Restart and ensure services run in background (Recommended)"
+    echo "1) Restart and ensure service runs in background (Recommended)"
     echo "2) Run in terminal foreground (Development mode on port 22222)"
-    echo "3) Exit setup (Keep services running in background)"
+    echo "3) Exit setup (Keep service running in background)"
     read -p "Select option (1-3): " choice
     
     case $choice in
@@ -546,44 +382,25 @@ run_app() {
             export XDG_RUNTIME_DIR="/run/user/$(id -u)"
             export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
             
-            local services_to_start=()
-            if [ "$INSTALL_TARGET" = "browser" ]; then
-                services_to_start=(nova-assistant-web.service)
-            elif [ "$INSTALL_TARGET" = "desktop" ]; then
-                services_to_start=(nova-assistant-desktop.service nova-audio-desktop.service)
-            else
-                services_to_start=(nova-assistant-web.service nova-assistant-desktop.service nova-audio-desktop.service)
-            fi
-            
             systemctl --user daemon-reexec
             systemctl --user daemon-reload
-            systemctl --user restart "${services_to_start[@]}"
-            print_success "Background daemons are active!"
+            systemctl --user restart nova-assistant-web.service
+            print_success "Background daemon is active!"
             print_info "RECOMMENDED WAY TO OPEN:"
-            if [ "$INSTALL_TARGET" = "browser" ] || [ "$INSTALL_TARGET" = "both" ]; then
-                echo -e "Browser App: Go to ${GREEN}http://localhost:22222${NC}"
-            fi
-            if [ "$INSTALL_TARGET" = "desktop" ] || [ "$INSTALL_TARGET" = "both" ]; then
-                echo -e "Desktop App: Launch from system menu or go to ${GREEN}http://localhost:22233${NC}"
-            fi
+            echo -e "Browser App: Go to ${GREEN}http://localhost:22222${NC}"
             ;;
         2)
-            print_info "Stopping background services to release ports..."
+            print_info "Stopping background service to release ports..."
             export XDG_RUNTIME_DIR="/run/user/$(id -u)"
             export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
-            systemctl --user stop nova-assistant-web.service nova-assistant-desktop.service || true
+            systemctl --user stop nova-assistant-web.service || true
             print_info "Starting dev server on port 22222..."
             PORT=22222 npm run dev
             ;;
         3)
-            print_success "Setup complete! Assistant services are running in the background."
+            print_success "Setup complete! Assistant service is running in the background."
             print_info "RECOMMENDED WAY TO OPEN:"
-            if [ "$INSTALL_TARGET" = "browser" ] || [ "$INSTALL_TARGET" = "both" ]; then
-                echo -e "Browser App: Go to ${GREEN}http://localhost:22222${NC}"
-            fi
-            if [ "$INSTALL_TARGET" = "desktop" ] || [ "$INSTALL_TARGET" = "both" ]; then
-                echo -e "Desktop App: Launch from system menu or go to ${GREEN}http://localhost:22233${NC}"
-            fi
+            echo -e "Browser App: Go to ${GREEN}http://localhost:22222${NC}"
             ;;
         *)
             print_warning "Invalid option, exiting setup."
@@ -593,7 +410,7 @@ run_app() {
 
 # Show help
 show_help() {
-    echo -e "${BLUE}Nova AI Assistant Installer${NC}"
+    echo -e "${BLUE}Nova AI Assistant Installer (Web Target Only)${NC}"
     echo ""
     echo "USAGE:"
     echo "    ./install.sh [OPTION]"
@@ -617,7 +434,6 @@ main() {
     
     case "${1:-interactive}" in
         install)
-            select_installation_target
             install_system_dependencies
             check_prerequisites
             install_dependencies
@@ -625,42 +441,13 @@ main() {
             setup_permissions_and_service
             setup_godo_integration
             build_project
-            if [ "$INSTALL_TARGET" = "desktop" ] || [ "$INSTALL_TARGET" = "both" ]; then
-                build_desktop_app
-            else
-                # Clean up desktop shortcut if installing as browser
-                DESKTOP_FILE="$HOME/.local/share/applications/nova.desktop"
-                if [ -f "$DESKTOP_FILE" ]; then
-                    print_info "Removing old desktop shortcut..."
-                    rm -f "$DESKTOP_FILE"
-                    update-desktop-database "$HOME/.local/share/applications" &> /dev/null || true
-                fi
-            fi
             
             print_header "Installation Finished"
-            if [ "$INSTALL_TARGET" = "browser" ]; then
-                print_success "Browser App target configuration completed successfully!"
-                print_info "RECOMMENDED WAY TO OPEN:"
-                echo -e "Open your favorite web browser (Chrome, Firefox, Brave, etc.) and go to:"
-                echo -e "   ${GREEN}http://localhost:22222${NC}"
-                echo -e "Browser usage is highly recommended for best performance, stability, and compatibility."
-            elif [ "$INSTALL_TARGET" = "desktop" ]; then
-                print_success "Desktop App (Development Stage) configuration completed successfully!"
-                print_info "RECOMMENDED WAY TO OPEN:"
-                echo -e "1. Open in browser (Recommended for best performance and compatibility):"
-                echo -e "   Go to ${GREEN}http://localhost:22233${NC} in Chrome/Firefox."
-                echo -e "2. Run standalone Desktop App (Development Stage):"
-                echo -e "   - Find and double click 'Nova AI Assistant (Development Stage)' in your desktop launcher."
-                echo -e "   - Or execute in terminal: ${BLUE}./desktop_app${NC}"
-            else
-                print_success "Both Web and Desktop Apps configuration completed successfully!"
-                print_info "RECOMMENDED WAY TO OPEN:"
-                echo -e "1. Access the Browser App:"
-                echo -e "   Go to ${GREEN}http://localhost:22222${NC} in your favorite browser."
-                echo -e "2. Access the Desktop App (Development Stage):"
-                echo -e "   - Launch 'Nova AI Assistant (Development Stage)' from your applications menu (loads on port 22233)."
-                echo -e "   - Or open in browser directly at: ${GREEN}http://localhost:22233${NC}"
-            fi
+            print_success "Browser App target configuration completed successfully!"
+            print_info "RECOMMENDED WAY TO OPEN:"
+            echo -e "Open your favorite web browser (Chrome, Firefox, Brave, etc.) and go to:"
+            echo -e "   ${GREEN}http://localhost:22222${NC}"
+            echo -e "Browser usage is highly recommended for best performance, stability, and compatibility."
             ;;
         dev)
             check_prerequisites
@@ -686,8 +473,7 @@ main() {
             ;;
         *)
             # Interactive Mode
-            print_header "Nova OS Assistant Installer"
-            select_installation_target
+            print_header "Nova OS Assistant Installer (Web Target Only)"
             install_system_dependencies
             check_prerequisites
             install_dependencies
@@ -695,41 +481,12 @@ main() {
             setup_permissions_and_service
             setup_godo_integration
             build_project
-            if [ "$INSTALL_TARGET" = "desktop" ] || [ "$INSTALL_TARGET" = "both" ]; then
-                build_desktop_app
-            else
-                # Clean up desktop shortcut if installing as browser
-                DESKTOP_FILE="$HOME/.local/share/applications/nova.desktop"
-                if [ -f "$DESKTOP_FILE" ]; then
-                    print_info "Removing old desktop shortcut..."
-                    rm -f "$DESKTOP_FILE"
-                    update-desktop-database "$HOME/.local/share/applications" &> /dev/null || true
-                fi
-            fi
             
-            if [ "$INSTALL_TARGET" = "browser" ]; then
-                print_success "Browser App target configuration completed successfully!"
-                print_info "RECOMMENDED WAY TO OPEN:"
-                echo -e "Open your favorite web browser (Chrome, Firefox, Brave, etc.) and go to:"
-                echo -e "   ${GREEN}http://localhost:22222${NC}"
-                echo -e "Browser usage is highly recommended for best performance, stability, and compatibility."
-            elif [ "$INSTALL_TARGET" = "desktop" ]; then
-                print_success "Desktop App (Development Stage) configuration completed successfully!"
-                print_info "RECOMMENDED WAY TO OPEN:"
-                echo -e "1. Open in browser (Recommended for best performance and compatibility):"
-                echo -e "   Go to ${GREEN}http://localhost:22233${NC} in Chrome/Firefox."
-                echo -e "2. Run standalone Desktop App (Development Stage):"
-                echo -e "   - Find and double click 'Nova AI Assistant (Development Stage)' in your desktop launcher."
-                echo -e "   - Or execute in terminal: ${BLUE}./desktop_app${NC}"
-            else
-                print_success "Both Web and Desktop Apps configuration completed successfully!"
-                print_info "RECOMMENDED WAY TO OPEN:"
-                echo -e "1. Access the Browser App:"
-                echo -e "   Go to ${GREEN}http://localhost:22222${NC} in your favorite browser."
-                echo -e "2. Access the Desktop App (Development Stage):"
-                echo -e "   - Launch 'Nova AI Assistant (Development Stage)' from your applications menu (loads on port 22233)."
-                echo -e "   - Or open in browser directly at: ${GREEN}http://localhost:22233${NC}"
-            fi
+            print_success "Browser App target configuration completed successfully!"
+            print_info "RECOMMENDED WAY TO OPEN:"
+            echo -e "Open your favorite web browser (Chrome, Firefox, Brave, etc.) and go to:"
+            echo -e "   ${GREEN}http://localhost:22222${NC}"
+            echo -e "Browser usage is highly recommended for best performance, stability, and compatibility."
             run_app
             ;;
     esac

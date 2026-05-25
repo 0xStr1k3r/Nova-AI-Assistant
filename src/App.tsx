@@ -29,7 +29,7 @@ export default function App() {
   const [sessionTime, setSessionTime] = useState(0);
 
   const wsRef = useRef<WebSocket | null>(null);
-  const uiWsRef = useRef<WebSocket | null>(null);
+
   const audioCtxRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
@@ -73,61 +73,7 @@ export default function App() {
     fetch("/api/config").then(r => r.json()).then(setConfig);
   }, []);
 
-  // Control WebSocket connection for Desktop UI dashboard
-  useEffect(() => {
-    if (window.location.port !== "22233") return;
 
-    let uiWs: WebSocket | null = null;
-    let reconnectTimeout: any = null;
-
-    const connectUiWs = () => {
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const ws = new WebSocket(`${protocol}//${window.location.host}/live?role=ui`);
-      uiWs = ws;
-      uiWsRef.current = ws;
-
-      ws.onopen = () => {
-        addLog("Connected to desktop control channel", "info");
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data);
-          if (msg.type === "status") {
-            setStatus(msg.status);
-          } else if (msg.type === "log") {
-            addLog(msg.msg, msg.logType);
-          } else if (msg.type === "transcript") {
-            addLog(`${msg.role}: ${msg.text}`, msg.role === "Nova" ? "info" : "wake");
-          } else if (msg.type === "interrupted") {
-            addLog("Response interrupted", "info");
-          }
-        } catch (err) {
-          console.error("UI control message error", err);
-        }
-      };
-
-      ws.onclose = () => {
-        setStatus("idle");
-        reconnectTimeout = setTimeout(connectUiWs, 2000);
-      };
-
-      ws.onerror = () => {
-        ws.close();
-      };
-    };
-
-    connectUiWs();
-
-    return () => {
-      if (uiWs) {
-        uiWs.onclose = null;
-        uiWs.close();
-      }
-      uiWsRef.current = null;
-      clearTimeout(reconnectTimeout);
-    };
-  }, []);
 
   // Auto-detect if mic permission already granted
   useEffect(() => {
@@ -240,13 +186,7 @@ export default function App() {
   };
 
   const startWakeWordListening = () => {
-    if (window.location.port === "22233") {
-      // [NATIVE RUST ENGINE OVERRIDE]
-      // The native Rust 'nova-core' daemon now handles the microphone and wake word offline.
-      // We disable the browser's SpeechRecognition so it doesn't crash pure native webviews (like PyQt6/Tauri).
-      addLog("Microphone and wake word are handled natively by Nova Core (Rust).", "info");
-      return;
-    }
+
 
     if (!("webkitSpeechRecognition" in window || "SpeechRecognition" in window)) {
       addLog("Speech recognition not supported in this browser.", "error");
@@ -365,10 +305,7 @@ export default function App() {
   };
 
   const connect = async () => {
-    if (window.location.port === "22233") {
-      addLog("To start the assistant, please speak the wake word 'Nova'.", "info");
-      return;
-    }
+
     if (connectingLockRef.current || wsRef.current || statusRef.current === "active" || statusRef.current === "connecting") {
       return;
     }
@@ -465,11 +402,7 @@ export default function App() {
   };
 
   const disconnect = () => {
-    if (window.location.port === "22233") {
-      if (uiWsRef.current && uiWsRef.current.readyState === WebSocket.OPEN) {
-        uiWsRef.current.send(JSON.stringify({ action: "endSession" }));
-      }
-    }
+
 
     if (processorRef.current) processorRef.current.disconnect();
     mediaStreamRef.current?.getTracks().forEach(t => t.stop());
