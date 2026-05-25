@@ -17,10 +17,10 @@ const execAsync = util.promisify(exec);
 
 // ─── Model Constants (optimized for free-tier rate limits) ────────────────────
 // Live API voice session: Only model supporting bidirectional audio streaming
-const MODEL_LIVE    = "gemini-3-flash-live";
+const MODEL_LIVE    = "gemini-2.0-flash-exp";
 // Memory extraction & utility tasks: Best free-tier limits (15 RPM, 350K TPM, 500 RPD)
-const MODEL_MEMORY  = "gemini-3.1-flash-lite";
-const MODEL_UTILITY = "gemini-3.1-flash-lite";
+const MODEL_MEMORY  = "gemini-2.0-flash";
+const MODEL_UTILITY = "gemini-2.0-flash";
 
 // ─── Smart Memory Extraction ──────────────────────────────────────────────────
 // Uses a lightweight Gemini call to extract meaningful facts from a session transcript
