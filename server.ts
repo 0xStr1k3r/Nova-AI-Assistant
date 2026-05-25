@@ -380,13 +380,16 @@ async function startServer() {
     const memoryContext = formatMemoryForPrompt(db.memory);
     const recentConversationsContext = formatRecentConversationsForPrompt();
 
-    const integrations = db.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "" };
+    const integrations = db.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "", opencodeEnabled: false };
     let integrationsPrompt = "";
     if (integrations.godoEnabled) {
       integrationsPrompt += `\n- GoDo CLI Task Manager is ACTIVE. You can view, add, or complete tasks by running "godo list", "godo add 'description'", or "godo complete <id>" via runLinuxCommand.`;
     }
     if (integrations.obsidianEnabled && integrations.obsidianPath) {
       integrationsPrompt += `\n- Obsidian Notes Vault is ACTIVE at path: "${integrations.obsidianPath}". You can query, read, create, update, or search markdown notes inside this folder using standard shell commands (grep, cat, echo, find) via runLinuxCommand.`;
+    }
+    if (integrations.opencodeEnabled) {
+      integrationsPrompt += `\n- OpenCode Developer Agent CLI is ACTIVE. If in developer or administrative mode, you can delegate complex programming, multi-file code writing, test execution, or refactoring tasks by executing the "opencode" CLI tool. Command syntax: "opencode -p '<prompt>'". OpenCode runs headlessly and modifies the local codebase directly.`;
     }
 
     const assistantName = db.wakeWord.charAt(0).toUpperCase() + db.wakeWord.slice(1);

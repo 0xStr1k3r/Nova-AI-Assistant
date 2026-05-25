@@ -36,6 +36,7 @@ export interface IntegrationsConfig {
   godoEnabled: boolean;
   obsidianEnabled: boolean;
   obsidianPath: string;
+  opencodeEnabled: boolean;
 }
 
 export interface NovaConfig {
@@ -164,6 +165,7 @@ const defaultConfig: NovaConfig = {
     godoEnabled: false,
     obsidianEnabled: false,
     obsidianPath: "",
+    opencodeEnabled: false,
   },
 };
 
@@ -230,7 +232,10 @@ export function getDb(): NovaConfig {
           godoEnabled: false,
           obsidianEnabled: false,
           obsidianPath: "",
+          opencodeEnabled: false,
         };
+      } else if (merged.integrations.opencodeEnabled === undefined) {
+        merged.integrations.opencodeEnabled = false;
       }
 
       if (envWakeWord) merged.wakeWord = envWakeWord;

@@ -37,6 +37,7 @@ export type ConfigType = {
     godoEnabled: boolean;
     obsidianEnabled: boolean;
     obsidianPath: string;
+    opencodeEnabled?: boolean;
   };
 };
 
@@ -619,7 +620,7 @@ export default function SettingsModal({
                   <button
                     type="button"
                     onClick={() => {
-                      const integrations = local.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "" };
+                      const integrations = local.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "", opencodeEnabled: false };
                       setLocal({
                         ...local,
                         integrations: {
@@ -675,7 +676,7 @@ export default function SettingsModal({
                   <button
                     type="button"
                     onClick={() => {
-                      const integrations = local.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "" };
+                      const integrations = local.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "", opencodeEnabled: false };
                       setLocal({
                         ...local,
                         integrations: {
@@ -703,7 +704,7 @@ export default function SettingsModal({
                       type="text"
                       value={local.integrations?.obsidianPath || ""}
                       onChange={e => {
-                        const integrations = local.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "" };
+                        const integrations = local.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "", opencodeEnabled: false };
                         setLocal({
                           ...local,
                           integrations: {
@@ -723,6 +724,62 @@ export default function SettingsModal({
                     </p>
                   </div>
                 )}
+              </div>
+
+              {/* OpenCode Integration */}
+              <div
+                className="p-4 rounded-2xl space-y-3"
+                style={{
+                  background: "rgba(255, 255, 255, 0.02)",
+                  border: "1px solid rgba(255, 255, 255, 0.05)"
+                }}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm"
+                      style={{
+                        background: local.integrations?.opencodeEnabled
+                          ? "rgba(139,92,246,0.15)"
+                          : "rgba(255,255,255,0.03)",
+                        border: local.integrations?.opencodeEnabled
+                          ? "1px solid rgba(139,92,246,0.3)"
+                          : "1px solid rgba(255,255,255,0.06)",
+                        color: local.integrations?.opencodeEnabled ? "#a78bfa" : "#64748b"
+                      }}
+                    >
+                      OC
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-white">OpenCode Developer Agent</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">
+                        Delegate complex coding, testing, and multi-file refactoring headlessly.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const integrations = local.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "", opencodeEnabled: false };
+                      setLocal({
+                        ...local,
+                        integrations: {
+                          ...integrations,
+                          opencodeEnabled: !integrations.opencodeEnabled
+                        }
+                      });
+                    }}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      local.integrations?.opencodeEnabled ? "bg-violet-600" : "bg-slate-700"
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        local.integrations?.opencodeEnabled ? "translate-x-4" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </div>
               </div>
             </div>
           )}
