@@ -5,15 +5,18 @@ import * as fs from "fs";
 let activeBrowser: Browser | null = null;
 let activePage: Page | null = null;
 const SCREENSHOTS_DIR = "/home/chiru/.config/nova-voice-assistant/screenshots";
+const DOWNLOADS_DIR = "/home/chiru/.config/nova-voice-assistant/downloads";
 
-// Ensure screenshots directory exists
+// Ensure directories exist
 if (!fs.existsSync(SCREENSHOTS_DIR)) {
   fs.mkdirSync(SCREENSHOTS_DIR, { recursive: true });
+}
+if (!fs.existsSync(DOWNLOADS_DIR)) {
+  fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
 }
 
 export async function getBrowserAndPage(): Promise<{ browser: Browser; page: Page }> {
   if (activeBrowser && activePage) {
-    // Check if browser connection is still active
     try {
       await activeBrowser.version();
       return { browser: activeBrowser, page: activePage };
@@ -26,18 +29,17 @@ export async function getBrowserAndPage(): Promise<{ browser: Browser; page: Pag
 
   console.log("[BROWSER] Launching system Chromium at /usr/bin/chromium...");
   
-  // Set default environmental variables to run inside graphical desktop
   process.env.DISPLAY = process.env.DISPLAY || ":0";
   
   activeBrowser = await puppeteer.launch({
     executablePath: "/usr/bin/chromium",
-    headless: false, // Runs visibly on the user's desktop!
-    defaultViewport: null, // Full viewport size
+    headless: false,
+    defaultViewport: null,
     args: [
       "--start-maximized", 
       "--no-sandbox", 
       "--disable-setuid-sandbox",
-      "--autoplay-policy=no-user-gesture-required" // Allows videos/songs to autoplay instantly!
+      "--autoplay-policy=no-user-gesture-required"
     ]
   });
 
@@ -85,7 +87,6 @@ export async function typeText(selector: string, text: string): Promise<string> 
   console.log(`[BROWSER] Typing text into selector ${selector}`);
   await page.waitForSelector(selector, { timeout: 6000 });
   
-  // Clear existing input before typing
   await page.click(selector, { clickCount: 3 });
   await page.keyboard.press("Backspace");
   
@@ -108,7 +109,6 @@ export async function playYoutubeQuery(query: string): Promise<string> {
   console.log(`[BROWSER-YOUTUBE] Searching query: "${query}"`);
   await page.goto(searchUrl, { waitUntil: "domcontentloaded" });
   
-  // YouTube video thumb link selector
   const videoThumbSelector = "ytd-video-renderer a#thumbnail";
   console.log("[BROWSER-YOUTUBE] Waiting for search results to load...");
   await page.waitForSelector(videoThumbSelector, { timeout: 8000 });
@@ -209,4 +209,141 @@ export async function controlMedia(action: "play" | "pause" | "mute" | "unmute" 
   }, action);
 
   return result;
+}
+
+// ─── NEW DEEP BROWSER AUTOMATION FEATURES ────────────────────────────────────
+
+export async function getPageDetails(): Promise<string> {
+  const { page } = await getBrowserAndPage();
+  console.log("[BROWSER] Fetching current page details...");
+  const title = await page.title();
+  const url = page.url();
+  const info = {
+    title,
+    url,
+    secure: url.startsWith("https"),
+    viewport: page.viewport()
+  };
+  return `Page Details:\n${JSON.stringify(info, null, 2)}`;
+}
+
+export async function navigateHistory(action: "back" | "forward" | "reload"): Promise<string> {
+  const { page } = await getBrowserAndPage();
+  console.log(`[BROWSER] Navigating history: ${action}`);
+  if (action === "back") {
+    await page.goBack();
+    return "Navigated back in history.";
+  } else if (action === "forward") {
+    await page.goForward();
+    return "Navigated forward in history.";
+  } else {
+    await page.reload();
+    return "Refreshed/reloaded page.";
+  }
+}
+
+export async function hoverElement(selector: string): Promise<string> {
+  const { page } = await getBrowserAndPage();
+  console.log(`[BROWSER] Hovering over element matching selector: ${selector}`);
+  await page.waitForSelector(selector, { timeout: 6000 });
+  await page.hover(selector);
+  return `Successfully hovered cursor over element matching: "${selector}"`;
+}
+
+export async function pressKeyboardKey(key: string): Promise<string> {
+  const { page } = await getBrowserAndPage();
+  console.log(`[BROWSER] Pressing keyboard key: ${key}`);
+  await page.keyboard.press(key as any);
+  return `Pressed key "${key}" inside page viewport.`;
+}
+
+export async function savePageAsPdf(): Promise<string> {
+  const { page } = await getBrowserAndPage();
+  const filePath = path.join(DOWNLOADS_DIR, `page_${Date.now()}.pdf`);
+  console.log(`[BROWSER] Printing page layout to PDF: ${filePath}`);
+  
+  try {
+    await page.pdf({ path: filePath, format: "A4" });
+    return `Successfully printed page as PDF to: ${filePath}`;
+  } catch (e: any) {
+    const fallbackPath = path.join(SCREENSHOTS_DIR, `full_page_${Date.now()}.png`);
+    await page.screenshot({ path: fallbackPath, fullPage: true });
+    return `PDF print is only supported headlessly. Gracefully fell back to capturing full-page screenshot at: ${fallbackPath}`;
+  }
+}
+
+export async function manageTabAction(action: "new" | "close" | "switch" | "list", index?: number): Promise<string> {
+  const { browser } = await getBrowserAndPage();
+  console.log(`[BROWSER-TABS] Performing tab action: ${action}`);
+
+  const pages = await browser.pages();
+
+  switch (action) {
+    case "list": {
+      const titles = await Promise.all(pages.map(async (p, i) => `[Tab ${i + 1}] ${await p.title()} (${p.url()})`));
+      return `Open tabs list:\n${titles.join("\n")}`;
+    }
+    case "new": {
+      activePage = await browser.newPage();
+      return `Opened new browser tab. Total tabs: ${pages.length + 1}`;
+    }
+    case "close": {
+      const idx = index !== undefined ? index - 1 : pages.indexOf(activePage!);
+      if (idx >= 0 && idx < pages.length) {
+        if (pages.length <= 1) {
+          return "Close blocked: Cannot close the last remaining browser tab.";
+        }
+        await pages[idx].close();
+        const remaining = await browser.pages();
+        activePage = remaining[0];
+        return `Closed tab successfully. Switching focus to first remaining tab.`;
+      }
+      return `ERROR: Invalid tab index specified.`;
+    }
+    case "switch": {
+      const idx = index !== undefined ? index - 1 : 0;
+      if (idx >= 0 && idx < pages.length) {
+        activePage = pages[idx];
+        await activePage.bringToFront();
+        return `Switched focus successfully to Tab ${idx + 1}: "${await activePage.title()}"`;
+      }
+      return `ERROR: Invalid tab index specified.`;
+    }
+  }
+}
+
+export async function manageCookiesAction(action: "get" | "clear" | "set", name?: string, value?: string): Promise<string> {
+  const { page } = await getBrowserAndPage();
+  console.log(`[BROWSER-COOKIES] Cookies action: ${action}`);
+
+  if (action === "get") {
+    const cookies = await page.cookies();
+    const formatted = cookies.map(c => `${c.name}=${c.value} (Domain: ${c.domain})`).join("\n");
+    return cookies.length > 0 ? `Active cookies:\n${formatted}` : "No active cookies found.";
+  } else if (action === "clear") {
+    const cookies = await page.cookies();
+    await page.deleteCookie(...cookies);
+    return "All page session cookies cleared successfully.";
+  } else if (action === "set") {
+    if (!name || !value) throw new Error("Name and Value parameters are required to set a cookie.");
+    const url = page.url();
+    const domain = new URL(url).hostname;
+    await page.setCookie({ name, value, domain });
+    return `Set cookie "${name}=${value}" successfully for domain "${domain}".`;
+  }
+  return "Unknown cookies action.";
+}
+
+export async function extractPageHtml(selector?: string): Promise<string> {
+  const { page } = await getBrowserAndPage();
+  if (selector) {
+    console.log(`[BROWSER] Extracting HTML content from selector: ${selector}`);
+    await page.waitForSelector(selector, { timeout: 5000 });
+    const html = await page.$eval(selector, el => el.innerHTML || "");
+    return `HTML of "${selector}":\n${html.substring(0, 5000)}${html.length > 5000 ? "\n...[TRUNCATED]" : ""}`;
+  } else {
+    console.log(`[BROWSER] Extracting full body HTML content`);
+    const html = await page.content();
+    return `Page HTML Content:\n${html.substring(0, 5000)}${html.length > 5000 ? "\n...[TRUNCATED]" : ""}`;
+  }
 }

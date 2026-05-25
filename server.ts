@@ -25,7 +25,15 @@ import {
   extractPageText as bExtractText,
   extractPageLinks as bExtractLinks,
   evaluateJs as bEvaluateJs,
-  controlMedia as bControlMedia
+  controlMedia as bControlMedia,
+  getPageDetails as bPageDetails,
+  navigateHistory as bHistory,
+  hoverElement as bHover,
+  pressKeyboardKey as bKeyPress,
+  savePageAsPdf as bPdf,
+  manageTabAction as bTab,
+  manageCookiesAction as bCookies,
+  extractPageHtml as bHtml
 } from "./browser_automations/browser";
 
 const execAsync = util.promisify(exec);
@@ -426,7 +434,7 @@ CAPABILITIES:
   2. CONTEXT: List all files to be read/modified, active types/interfaces, or backend schemas.
   3. STEP-BY-STEP WORK: Provide precise requirements, design patterns, and edge cases to handle.
   4. VERIFICATION PLAN: Specify exactly what tests to run, how to build/compile, and what command commands to use to confirm success.
-- You have the openBrowser tool to open the default web browser on the local Linux desktop and navigate to URLs or search and play songs/videos on YouTube. Use this whenever the user asks to open a site, navigate to a page, or play music/songs/videos.
+- You have the openBrowser tool to open the default web browser on the local Linux desktop and perform a rich set of browser automation actions (navigating, clicking elements, typing text, scrolling, autoplaying YouTube queries, taking screenshots, closing browser, evaluation custom JavaScript code, playing/pausing/muting media and skipping ads, fetching page details/metadata, history navigation (back/forward/reload), hovering elements, pressing keyboard keys, exporting pages to PDF, managing multiple tabs, administering page session cookies, or extracting raw inner HTML).
 VOICE RULES (non-negotiable):
 - Max 2-3 SHORT sentences per response. You are being spoken aloud.
 - NEVER say "Is there anything else I can help you with?" or any variant of that. EVER.
@@ -541,7 +549,11 @@ ${recentConversationsContext}`;
           properties: {
             action: {
               type: Type.STRING,
-              enum: ["navigate", "click", "type", "screenshot", "close", "scroll", "extractText", "extractLinks", "evaluateJs", "controlMedia"],
+              enum: [
+                "navigate", "click", "type", "screenshot", "close", "scroll", 
+                "extractText", "extractLinks", "evaluateJs", "controlMedia",
+                "details", "history", "hover", "keypress", "pdf", "tab", "cookies", "html"
+              ],
               description: "The browser automation action to perform. Defaults to 'navigate' if url or youtubeSearchQuery is provided.",
             },
             url: {
@@ -554,7 +566,7 @@ ${recentConversationsContext}`;
             },
             selector: {
               type: Type.STRING,
-              description: "The CSS selector of the element to click, type into, or extract text from. Optional.",
+              description: "The CSS selector of the element to click, type into, or extract text or html from. Optional.",
             },
             text: {
               type: Type.STRING,
@@ -577,6 +589,37 @@ ${recentConversationsContext}`;
               type: Type.STRING,
               enum: ["play", "pause", "mute", "unmute", "skipAd"],
               description: "The media control action to perform. Required if action is 'controlMedia'.",
+            },
+            historyAction: {
+              type: Type.STRING,
+              enum: ["back", "forward", "reload"],
+              description: "The history navigation action. Required if action is 'history'.",
+            },
+            key: {
+              type: Type.STRING,
+              description: "The physical keyboard key to press (e.g. 'Enter', 'Tab', 'Backspace'). Required if action is 'keypress'.",
+            },
+            tabAction: {
+              type: Type.STRING,
+              enum: ["new", "close", "switch", "list"],
+              description: "The browser tab management action to perform. Required if action is 'tab'.",
+            },
+            tabIndex: {
+              type: Type.INTEGER,
+              description: "The 1-based index of the tab to target (required if tabAction is 'switch' or 'close' and specifying a particular tab).",
+            },
+            cookieAction: {
+              type: Type.STRING,
+              enum: ["get", "clear", "set"],
+              description: "The cookie management action to perform. Required if action is 'cookies'.",
+            },
+            cookieName: {
+              type: Type.STRING,
+              description: "The name of the cookie to retrieve or set.",
+            },
+            cookieValue: {
+              type: Type.STRING,
+              description: "The value of the cookie to set.",
             },
           },
           required: [],
@@ -818,6 +861,14 @@ SUCCESS: ${code === 0}
                   const jsCode = (call.args as any).jsCode as string;
                   const mediaAction = (call.args as any).mediaAction as "play" | "pause" | "mute" | "unmute" | "skipAd";
                   
+                  const historyAction = (call.args as any).historyAction as "back" | "forward" | "reload";
+                  const key = (call.args as any).key as string;
+                  const tabAction = (call.args as any).tabAction as "new" | "close" | "switch" | "list";
+                  const tabIndex = (call.args as any).tabIndex as number;
+                  const cookieAction = (call.args as any).cookieAction as "get" | "clear" | "set";
+                  const cookieName = (call.args as any).cookieName as string;
+                  const cookieValue = (call.args as any).cookieValue as string;
+                  
                   logTurn("BROWSER", `Automating browser: Action=${action}, URL=${url || "none"}, Query=${youtubeSearchQuery || "none"}`);
 
                   let resultStr = "";
@@ -855,6 +906,27 @@ SUCCESS: ${code === 0}
                     } else if (action === "controlMedia") {
                       if (!mediaAction) throw new Error("Media action ('play', 'pause', 'mute', 'unmute', 'skipAd') is required.");
                       resultStr = await bControlMedia(mediaAction);
+                    } else if (action === "details") {
+                      resultStr = await bPageDetails();
+                    } else if (action === "history") {
+                      if (!historyAction) throw new Error("History action ('back', 'forward', 'reload') is required.");
+                      resultStr = await bHistory(historyAction);
+                    } else if (action === "hover") {
+                      if (!selector) throw new Error("CSS selector is required to hover.");
+                      resultStr = await bHover(selector);
+                    } else if (action === "keypress") {
+                      if (!key) throw new Error("Key name is required for keypress.");
+                      resultStr = await bKeyPress(key);
+                    } else if (action === "pdf") {
+                      resultStr = await bPdf();
+                    } else if (action === "tab") {
+                      if (!tabAction) throw new Error("Tab action ('new', 'close', 'switch', 'list') is required.");
+                      resultStr = await bTab(tabAction, tabIndex);
+                    } else if (action === "cookies") {
+                      if (!cookieAction) throw new Error("Cookie action ('get', 'clear', 'set') is required.");
+                      resultStr = await bCookies(cookieAction, cookieName, cookieValue);
+                    } else if (action === "html") {
+                      resultStr = await bHtml(selector);
                     } else {
                       throw new Error(`Unsupported browser action: "${action}" or missing parameters.`);
                     }
