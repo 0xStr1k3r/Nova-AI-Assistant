@@ -75,6 +75,10 @@ import {
   moveMouseAction,
   typeTextAction,
   pressKeyAction,
+  adjustBrightness,
+  controlNotifications,
+  launchApplication,
+  listInstalledApplications,
 } from "./src/server/gui-automation";
 import { runCustomNvidiaAgent } from "./agent/nvidia-agent";
 
@@ -479,7 +483,7 @@ async function startServer() {
     const memoryContext = formatMemoryForPrompt(db.memory);
     const recentConversationsContext = formatRecentConversationsForPrompt();
 
-    const integrations = db.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "", opencodeEnabled: false };
+    const integrations = db.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "", customAgentEnabled: false };
     let integrationsPrompt = "";
     if (integrations.godoEnabled) {
       integrationsPrompt += `\n- GoDo CLI Task Manager is ACTIVE. You can view, add, or complete tasks by running "godo list", "godo add 'description'", or "godo complete <id>" via runLinuxCommand.`;
@@ -487,25 +491,32 @@ async function startServer() {
     if (integrations.obsidianEnabled && integrations.obsidianPath) {
       integrationsPrompt += `\n- Obsidian Notes Vault is ACTIVE at path: "${integrations.obsidianPath}". You can query, read, create, update, or search markdown notes inside this folder using standard shell commands (grep, cat, echo, find) via runLinuxCommand.`;
     }
-    if (integrations.opencodeEnabled) {
-      integrationsPrompt += `\n- OpenCode Developer Agent CLI is ACTIVE. If in developer or administrative mode, you can delegate complex programming, multi-file code writing, test execution, or refactoring tasks by executing the "opencode" CLI tool. Command syntax: "opencode -p '<prompt>'". OpenCode runs headlessly and modifies the local codebase directly.
-- The assistant is also fully integrated with and aware of other optional developer AI CLI tools that can be installed (e.g. Anthropic's Claude Code CLI "claude", or GitHub Copilot CLI "copilot"). Depending on the task requirements, you can invoke these globally installed CLI tools headlessly via runLinuxCommand to expand and accelerate your tasks.`;
-    }
 
     const assistantName = db.wakeWord.charAt(0).toUpperCase() + db.wakeWord.slice(1);
     const systemInstruction = `${activeMode.instruction}
 
 IDENTITY: Your name is ${assistantName}. You are speaking to ${userName}.
+
 CAPABILITIES:
 - You have the searchWeb tool to query the internet, and the fetchPage tool to read specific web pages. You have full internet and web access via these tools. Use them to answer search queries.
 - You have the runLinuxCommand tool to run bash commands on your host system. Since the assistant daemon runs as a background service with root privileges and has complete passwordless sudo authority, you have full systemwide administration privileges to run sudo commands or manage services. Your command execution is guided by the selected operating mode.${integrationsPrompt}
-- You have the runCodingAgent tool to invoke developer AI agents ('opencode', 'claude', 'copilot') headlessly. Since you and these agents have full passwordless sudo authority, you can delegate tasks that require advanced administrative permissions.
-- PROTOCOL FOR DELEGATING TO CODING AGENTS: When calling runCodingAgent, do NOT send vague, short, or single-line prompts. You MUST plan the task thoroughly first and construct a highly detailed, comprehensive prompt so the coding agent gets the full picture to complete the task headlessly. Your entire planned instruction prompt will be automatically wrapped and escaped inside double quotes (" ") when executed in the command line, ensuring a single cohesive, perfectly parsed execution block:
-  1. GOAL: Clearly define the objective of the changes.
-  2. CONTEXT: List all files to be read/modified, active types/interfaces, or backend schemas.
-  3. STEP-BY-STEP WORK: Provide precise requirements, design patterns, and edge cases to handle.
-  4. VERIFICATION PLAN: Specify exactly what tests to run, how to build/compile, and what command commands to use to confirm success.
-- You have the openBrowser tool to open the default web browser on the local Linux desktop and perform a rich set of browser automation actions (navigating, clicking elements, typing text, scrolling, autoplaying YouTube queries, taking screenshots, closing browser, evaluation custom JavaScript code, playing/pausing/muting media and skipping ads, fetching page details/metadata, history navigation (back/forward/reload), hovering elements, pressing keyboard keys, exporting pages to PDF, managing multiple tabs, administering page session cookies, extracting raw inner HTML, dynamic resource/ad blocking, stealth/User-Agent configuration, popup alert dialog handling, dynamic infinite auto-scrolling, or tabular markdown data extraction).
+- You have the runCodingAgent tool to spawn custom, local autonomous AI developer coding agents in the background to handle coding, file editing, or deep research tasks. You also have getCodingAgentStatus to query agent execution progress and status logs.
+  1. MULTIPLE AGENTS: You can spawn multiple concurrent autonomous coding agents to run in the background.
+  2. MODEL SELECTION: You can specify a particular model from the available NVIDIA NIM models depending on task complexity (e.g. fastest models like 'meta/llama-3.1-8b-instruct' or 'mistralai/ministral-14b-instruct-2512' for simpler checks, or powerful coding models like 'qwen/qwen3-coder-480b-a35b-instruct' for complex algorithms). Set it to 'auto' to let the system auto-classify the complexity.
+  3. PROTOCOL FOR DELEGATING TO CODING AGENTS: When calling runCodingAgent, do NOT send vague, short, or single-line prompts. You MUST plan the task thoroughly first and construct a highly detailed, comprehensive prompt so the coding agent gets the full picture to complete the task headlessly. Your entire planned instruction prompt will be automatically wrapped and escaped inside double quotes (" ") when executed in the command line, ensuring a single cohesive, perfectly parsed execution block:
+     - GOAL: Clearly define the objective of the changes.
+     - CONTEXT: List all files to be read/modified, active types/interfaces, or backend schemas.
+     - STEP-BY-STEP WORK: Provide precise requirements, design patterns, and edge cases to handle.
+     - VERIFICATION PLAN: Specify exactly what tests to run, how to build/compile, and what command commands to use to confirm success.
+- You have the openBrowser tool to open the default Chromium web browser on the local Linux desktop and automate interactions. Actions include: navigating to URLs, searching Google, clicking elements/buttons (including heuristic next page click next buttons), typing text/form fields, taking screenshots, closing browser, scrolling pages (including automatic infinite scroll), custom JavaScript execution, media control (play, pause, mute, unmute, skip YouTube ads, and adjust system audio/browser volume), retrieving metadata/details/URLs, page history navigation (back, forward, reload), hovering elements, pressing keyboard keys, exporting pages to PDF, managing multiple browser tabs, handling cookies, extracting inner HTML, blocking resource types/ads, configuring stealth/User-Agent headers, and extracting tabular data as markdown tables.
+- You have advanced system automation and desktop GUI tools to navigate, control, and monitor the host Linux desktop:
+  1. SCREEN CAPTURE & VISION: Capture full desktop screenshots (\`desktopScreenshot\`), or use \`analyzeDesktop\` (which captures a screenshot and runs Gemini Vision to describe the visual screen state, locate open windows, or answer specific questions about the desktop interface). Use these to understand user context and troubleshoot UI.
+  2. WINDOW MANAGEMENT: Control desktop windows using \`windowControl\` (actions: list all windows, focus, close, minimize, maximize, get active window info). Works across displays and window managers (X11, Wayland, GNOME, KDE, etc.).
+  3. DESKTOP INPUTS: Send keyboard and mouse events to GUI apps using \`desktopInput\` (type text, press keys, move mouse pointer, and perform mouse clicks).
+  4. BRIGHTNESS: Adjust screen backlight brightness using \`adjustSystemBrightness\` (up, down, or set exact percentage).
+  5. NOTIFICATIONS: Manage desktop notifications using \`manageSystemNotifications\` (send a notification popup, clear/close all notifications, or retrieve notification history).
+  6. APPLICATIONS: Interact with system programs using \`manageApplications\` (list/search installed \`.desktop\` applications matching a query, and launch applications in the background).
+  7. DISPLAY INFO: Get display/desktop environment details (protocol, window manager, dimensions) using \`getDisplayInfo\`.
 VOICE RULES (non-negotiable):
 - Max 2-3 SHORT sentences per response. You are being spoken aloud.
 - NEVER say "Is there anything else I can help you with?" or any variant of that. EVER.
@@ -883,6 +894,74 @@ ${recentConversationsContext}`;
           properties: {},
           required: [],
         },
+      });
+
+      functionDeclarations.push({
+        name: "adjustSystemBrightness",
+        description: "Adjusts the system display brightness level. Can step brightness up or down, or set it to an exact percentage (0-100).",
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            action: {
+              type: Type.STRING,
+              enum: ["up", "down", "set"],
+              description: "The brightness adjustment action to perform."
+            },
+            value: {
+              type: Type.INTEGER,
+              description: "The percentage value to set, or increment/decrement percentage amount (defaults to 10 if not provided)."
+            }
+          },
+          required: ["action"]
+        }
+      });
+
+      functionDeclarations.push({
+        name: "manageSystemNotifications",
+        description: "Manages desktop notifications: sends a notification, clears notifications, or retrieves notification history.",
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            action: {
+              type: Type.STRING,
+              enum: ["send", "clear", "history"],
+              description: "The notification action to perform."
+            },
+            title: {
+              type: Type.STRING,
+              description: "The notification title. Required if action is 'send'."
+            },
+            message: {
+              type: Type.STRING,
+              description: "The notification message body. Optional for 'send'."
+            }
+          },
+          required: ["action"]
+        }
+      });
+
+      functionDeclarations.push({
+        name: "manageApplications",
+        description: "Interacts with standard desktop applications. Can query/list installed system applications (.desktop files) or launch an application executable in the background.",
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            action: {
+              type: Type.STRING,
+              enum: ["list", "launch"],
+              description: "The action to perform: 'list' to search installed applications, 'launch' to run an application."
+            },
+            query: {
+              type: Type.STRING,
+              description: "Optional search query to filter installed applications by name or command."
+            },
+            applicationName: {
+              type: Type.STRING,
+              description: "The application executable command or name to launch. Required if action is 'launch'."
+            }
+          },
+          required: ["action"]
+        }
       });
     }
 
@@ -1528,6 +1607,86 @@ ${recentConversationsContext}`;
                   } catch (error: any) {
                     resultStr = `ERROR: ${error.message}`;
                     console.error(`[GUI FAIL] Display info:`, error.message);
+                  }
+
+                  toolResponses.push({
+                    id: call.id,
+                    name: call.name,
+                    response: { result: resultStr },
+                  });
+                } else if (call.name === "adjustSystemBrightness") {
+                  const action = (call.args as any).action as "up" | "down" | "set";
+                  const value = (call.args as any).value as number | undefined;
+                  logTurn("GUI", `Adjust brightness: ${action} ${value !== undefined ? value : ""}`);
+
+                  let resultStr = "";
+                  try {
+                    const result = await adjustBrightness(action, value);
+                    resultStr = result.success ? result.message : result.error || "Failed to adjust brightness";
+                    console.log(`[GUI OK] Brightness: ${resultStr}`);
+                  } catch (error: any) {
+                    resultStr = `ERROR: ${error.message}`;
+                    console.error(`[GUI FAIL] Brightness adjustment:`, error.message);
+                  }
+
+                  toolResponses.push({
+                    id: call.id,
+                    name: call.name,
+                    response: { result: resultStr },
+                  });
+                } else if (call.name === "manageSystemNotifications") {
+                  const action = (call.args as any).action as "send" | "clear" | "history";
+                  const title = (call.args as any).title as string | undefined;
+                  const message = (call.args as any).message as string | undefined;
+                  logTurn("GUI", `Notification action: ${action}`);
+
+                  let resultStr = "";
+                  try {
+                    const result = await controlNotifications(action, title, message);
+                    if (result.success) {
+                      if (action === "history") {
+                        resultStr = JSON.stringify(result.data, null, 2);
+                      } else {
+                        resultStr = result.message;
+                      }
+                    } else {
+                      resultStr = result.error || "Notification action failed";
+                    }
+                    console.log(`[GUI OK] Notification managed: ${action}`);
+                  } catch (error: any) {
+                    resultStr = `ERROR: ${error.message}`;
+                    console.error(`[GUI FAIL] Notification management:`, error.message);
+                  }
+
+                  toolResponses.push({
+                    id: call.id,
+                    name: call.name,
+                    response: { result: resultStr },
+                  });
+                } else if (call.name === "manageApplications") {
+                  const action = (call.args as any).action as "list" | "launch";
+                  const query = (call.args as any).query as string | undefined;
+                  const applicationName = (call.args as any).applicationName as string | undefined;
+                  logTurn("GUI", `Application manager: ${action}`);
+
+                  let resultStr = "";
+                  try {
+                    if (action === "list") {
+                      const result = await listInstalledApplications(query);
+                      resultStr = result.success ? JSON.stringify(result.data, null, 2) : result.error || "Failed to list applications";
+                    } else if (action === "launch") {
+                      if (!applicationName) {
+                        throw new Error("Application name executable is required for launch action");
+                      }
+                      const result = await launchApplication(applicationName);
+                      resultStr = result.message;
+                    } else {
+                      throw new Error(`Unknown application action: ${action}`);
+                    }
+                    console.log(`[GUI OK] Applications: ${action}`);
+                  } catch (error: any) {
+                    resultStr = `ERROR: ${error.message}`;
+                    console.error(`[GUI FAIL] Application management:`, error.message);
                   }
 
                   toolResponses.push({
