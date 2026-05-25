@@ -1,6 +1,10 @@
 import puppeteer, { Browser, Page } from "puppeteer-core";
 import * as path from "path";
 import * as fs from "fs";
+import { exec } from "child_process";
+import * as util from "util";
+
+const execAsync = util.promisify(exec);
 
 let activeBrowser: Browser | null = null;
 let activePage: Page | null = null;
@@ -172,11 +176,14 @@ export async function evaluateJs(code: string): Promise<any> {
   return typeof result === "object" ? JSON.stringify(result) : String(result);
 }
 
-export async function controlMedia(action: "play" | "pause" | "mute" | "unmute" | "skipAd"): Promise<string> {
+export async function controlMedia(
+  action: "play" | "pause" | "mute" | "unmute" | "skipAd" | "volumeUp" | "volumeDown" | "setVolume",
+  volumePercent?: number
+): Promise<string> {
   const { page } = await getBrowserAndPage();
-  console.log(`[BROWSER-MEDIA] Performing media control: ${action}`);
+  console.log(`[BROWSER-MEDIA] Performing media control: ${action}, volumePercent=${volumePercent ?? "none"}`);
 
-  const result = await page.evaluate((act) => {
+  const result = await page.evaluate((act, volPercent) => {
     const video = document.querySelector("video");
     
     if (act === "skipAd") {
@@ -203,10 +210,21 @@ export async function controlMedia(action: "play" | "pause" | "mute" | "unmute" 
       case "unmute":
         video.muted = false;
         return "Unmuted media audio.";
+      case "volumeUp":
+        video.volume = Math.min(1.0, video.volume + 0.1);
+        return `Increased browser media volume to ${Math.round(video.volume * 100)}%.`;
+      case "volumeDown":
+        video.volume = Math.max(0.0, video.volume - 0.1);
+        return `Decreased browser media volume to ${Math.round(video.volume * 100)}%.`;
+      case "setVolume": {
+        const val = volPercent !== undefined ? volPercent / 100 : 0.5;
+        video.volume = Math.max(0.0, Math.min(1.0, val));
+        return `Set browser media volume to ${Math.round(video.volume * 100)}%.`;
+      }
       default:
         return "Unknown media control action.";
     }
-  }, action);
+  }, action, volumePercent);
 
   return result;
 }
@@ -345,5 +363,103 @@ export async function extractPageHtml(selector?: string): Promise<string> {
     console.log(`[BROWSER] Extracting full body HTML content`);
     const html = await page.content();
     return `Page HTML Content:\n${html.substring(0, 5000)}${html.length > 5000 ? "\n...[TRUNCATED]" : ""}`;
+  }
+}
+
+// ─── NEW PHASE 8 FEATURES: PAGINATION AND VOLUME ────────────────────────────
+
+export async function clickNextButton(): Promise<string> {
+  const { page } = await getBrowserAndPage();
+  console.log("[BROWSER] Intelligently searching for Next Page link/button...");
+  
+  const result = await page.evaluate(() => {
+    const nextSelectors = [
+      'a[rel="next"]',
+      'a.next',
+      'button.next',
+      '.next a',
+      '.next button',
+      'a[aria-label*="next" i]',
+      'a[aria-label*="Next" i]',
+      'button[aria-label*="next" i]',
+      'button[aria-label*="Next" i]',
+      '.pagination-next',
+      '.pagination__next',
+      '.page-next',
+      '[title*="Next" i]'
+    ];
+    
+    for (const sel of nextSelectors) {
+      const el = document.querySelector(sel) as HTMLElement;
+      if (el && typeof el.click === "function") {
+        el.click();
+        return `Successfully clicked next page element matching selector: "${sel}"`;
+      }
+    }
+    
+    const interactiveElements = Array.from(document.querySelectorAll("a, button, [role='button']")) as HTMLElement[];
+    const nextTextRegex = /^(next|next page|>|→|»|forward)$/i;
+    
+    for (const el of interactiveElements) {
+      const text = (el.innerText || el.textContent || "").trim();
+      if (nextTextRegex.test(text) && typeof el.click === "function") {
+        el.click();
+        return `Successfully clicked next page element containing text: "${text}"`;
+      }
+    }
+
+    for (const el of interactiveElements) {
+      const text = (el.innerText || el.textContent || "").trim().toLowerCase();
+      if (text.includes("next") && text.length < 15 && typeof el.click === "function") {
+        el.click();
+        return `Successfully clicked next page element containing phrase: "${el.innerText.trim()}"`;
+      }
+    }
+    
+    return "ERROR: Could not find any high-confidence 'Next' buttons or pagination links on this page.";
+  });
+  
+  return result;
+}
+
+export async function adjustSystemVolume(
+  action: "up" | "down" | "mute" | "unmute" | "set",
+  percent?: number
+): Promise<string> {
+  console.log(`[BROWSER-SYSTEM-SOUND] Adjusting system sound: Action=${action}, Percent=${percent ?? "none"}`);
+  
+  try {
+    switch (action) {
+      case "up":
+        await execAsync("wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.1+");
+        break;
+      case "down":
+        await execAsync("wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.1-");
+        break;
+      case "mute":
+        await execAsync("wpctl set-mute @DEFAULT_AUDIO_SINK@ 1");
+        return "System audio muted successfully.";
+      case "unmute":
+        await execAsync("wpctl set-mute @DEFAULT_AUDIO_SINK@ 0");
+        return "System audio unmuted successfully.";
+      case "set": {
+        if (percent === undefined) throw new Error("Volume percent is required for set action.");
+        const val = Math.max(0, Math.min(100, percent)) / 100;
+        await execAsync(`wpctl set-volume @DEFAULT_AUDIO_SINK@ ${val}`);
+        break;
+      }
+    }
+    
+    const { stdout } = await execAsync("wpctl get-volume @DEFAULT_AUDIO_SINK@");
+    const match = stdout.match(/Volume:\s+([0-9.]+)/i);
+    if (match) {
+      const volNum = Math.round(parseFloat(match[1]) * 100);
+      const isMuted = stdout.toLowerCase().includes("[muted]");
+      return `System volume is now ${volNum}%${isMuted ? " (MUTED)" : ""}.`;
+    }
+    return `Successfully executed system volume adjustment action: ${action}.`;
+  } catch (e: any) {
+    console.error("[SYSTEM SOUND ERROR]", e);
+    throw new Error(`Failed to adjust system volume: ${e.message}`);
   }
 }

@@ -33,7 +33,10 @@ import {
   savePageAsPdf as bPdf,
   manageTabAction as bTab,
   manageCookiesAction as bCookies,
-  extractPageHtml as bHtml
+  extractPageHtml as bHtml,
+  getBrowserAndPage as bGetBrowserPage,
+  clickNextButton as bClickNext,
+  adjustSystemVolume as bSystemVolume
 } from "./browser_automations/browser";
 
 const execAsync = util.promisify(exec);
@@ -552,7 +555,8 @@ ${recentConversationsContext}`;
               enum: [
                 "navigate", "click", "type", "screenshot", "close", "scroll", 
                 "extractText", "extractLinks", "evaluateJs", "controlMedia",
-                "details", "history", "hover", "keypress", "pdf", "tab", "cookies", "html"
+                "details", "history", "hover", "keypress", "pdf", "tab", "cookies", "html",
+                "clickNext", "systemVolume", "analyze"
               ],
               description: "The browser automation action to perform. Defaults to 'navigate' if url or youtubeSearchQuery is provided.",
             },
@@ -587,7 +591,7 @@ ${recentConversationsContext}`;
             },
             mediaAction: {
               type: Type.STRING,
-              enum: ["play", "pause", "mute", "unmute", "skipAd"],
+              enum: ["play", "pause", "mute", "unmute", "skipAd", "volumeUp", "volumeDown", "setVolume"],
               description: "The media control action to perform. Required if action is 'controlMedia'.",
             },
             historyAction: {
@@ -620,6 +624,15 @@ ${recentConversationsContext}`;
             cookieValue: {
               type: Type.STRING,
               description: "The value of the cookie to set.",
+            },
+            volumeAction: {
+              type: Type.STRING,
+              enum: ["up", "down", "mute", "unmute", "set"],
+              description: "The volume adjustment action for system audio control. Required if action is 'systemVolume'.",
+            },
+            volumePercent: {
+              type: Type.INTEGER,
+              description: "The target volume level percentage (from 0 to 100). Required if volumeAction is 'set' or mediaAction is 'setVolume'.",
             },
           },
           required: [],
@@ -859,7 +872,7 @@ SUCCESS: ${code === 0}
                   const scrollDirection = (call.args as any).scrollDirection as "up" | "down";
                   const scrollAmount = (call.args as any).scrollAmount as number;
                   const jsCode = (call.args as any).jsCode as string;
-                  const mediaAction = (call.args as any).mediaAction as "play" | "pause" | "mute" | "unmute" | "skipAd";
+                  const mediaAction = (call.args as any).mediaAction as "play" | "pause" | "mute" | "unmute" | "skipAd" | "volumeUp" | "volumeDown" | "setVolume";
                   
                   const historyAction = (call.args as any).historyAction as "back" | "forward" | "reload";
                   const key = (call.args as any).key as string;
@@ -868,6 +881,9 @@ SUCCESS: ${code === 0}
                   const cookieAction = (call.args as any).cookieAction as "get" | "clear" | "set";
                   const cookieName = (call.args as any).cookieName as string;
                   const cookieValue = (call.args as any).cookieValue as string;
+                  
+                  const volumeAction = (call.args as any).volumeAction as "up" | "down" | "mute" | "unmute" | "set";
+                  const volumePercent = (call.args as any).volumePercent as number;
                   
                   logTurn("BROWSER", `Automating browser: Action=${action}, URL=${url || "none"}, Query=${youtubeSearchQuery || "none"}`);
 
@@ -904,8 +920,8 @@ SUCCESS: ${code === 0}
                       if (!jsCode) throw new Error("JavaScript code expression is required to evaluate.");
                       resultStr = await bEvaluateJs(jsCode);
                     } else if (action === "controlMedia") {
-                      if (!mediaAction) throw new Error("Media action ('play', 'pause', 'mute', 'unmute', 'skipAd') is required.");
-                      resultStr = await bControlMedia(mediaAction);
+                      if (!mediaAction) throw new Error("Media action ('play', 'pause', 'mute', 'unmute', 'skipAd', 'volumeUp', 'volumeDown', 'setVolume') is required.");
+                      resultStr = await bControlMedia(mediaAction, volumePercent);
                     } else if (action === "details") {
                       resultStr = await bPageDetails();
                     } else if (action === "history") {
@@ -927,6 +943,36 @@ SUCCESS: ${code === 0}
                       resultStr = await bCookies(cookieAction, cookieName, cookieValue);
                     } else if (action === "html") {
                       resultStr = await bHtml(selector);
+                    } else if (action === "clickNext") {
+                      resultStr = await bClickNext();
+                    } else if (action === "systemVolume") {
+                      if (!volumeAction) throw new Error("Volume action ('up', 'down', 'mute', 'unmute', 'set') is required.");
+                      resultStr = await bSystemVolume(volumeAction, volumePercent);
+                    } else if (action === "analyze") {
+                      const { page } = await bGetBrowserPage();
+                      const base64 = await page.screenshot({ encoding: "base64" });
+                      console.log(`[BROWSER-VISION] Screenshot captured. Sending to gemini-2.0-flash for visual description...`);
+                      const promptText = text || "Describe this browser screenshot in detail, including the active page content, key layout elements, and any visible interactive fields.";
+                      const visionRes = await ai.models.generateContent({
+                        model: MODEL_MEMORY,
+                        contents: [
+                          {
+                            role: "user",
+                            parts: [
+                              {
+                                inlineData: {
+                                  data: base64,
+                                  mimeType: "image/png"
+                                }
+                              },
+                              {
+                                text: promptText
+                              }
+                            ]
+                          }
+                        ]
+                      });
+                      resultStr = visionRes.candidates?.[0]?.content?.parts?.[0]?.text || "Failed to analyze screen.";
                     } else {
                       throw new Error(`Unsupported browser action: "${action}" or missing parameters.`);
                     }
