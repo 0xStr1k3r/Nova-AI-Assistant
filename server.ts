@@ -331,7 +331,7 @@ ${raw.substring(0, 3000)}` }] }],
 // ─── Server ───────────────────────────────────────────────────────────────────
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
   app.use(express.json());
 
   const server = http.createServer(app);
@@ -342,7 +342,54 @@ async function startServer() {
     httpOptions: { headers: { "User-Agent": "aistudio-build" } },
   });
 
-  wss.on("connection", async (clientWs) => {
+  const activeUiWss = new Set<any>();
+  let activeAudioWs: any = null;
+
+  function broadcastToUi(msg: any) {
+    const data = JSON.stringify(msg);
+    for (const ws of activeUiWss) {
+      if (ws.readyState === 1) { // OPEN
+        try {
+          ws.send(data);
+        } catch (e) {
+          console.error("[UI BROADCAST ERROR]", e);
+        }
+      }
+    }
+  }
+
+  wss.on("connection", async (clientWs, req) => {
+    const url = new URL(req.url ?? "", `http://${req.headers?.host ?? "localhost"}`);
+    const role = url.searchParams.get("role") ?? "hybrid";
+
+    if (role === "ui") {
+      activeUiWss.add(clientWs);
+      clientWs.send(JSON.stringify({ type: "status", status: activeAudioWs ? "active" : "idle" }));
+      
+      clientWs.on("message", (data) => {
+        try {
+          const payload = JSON.parse(data.toString());
+          if (payload.action === "endSession") {
+            if (activeAudioWs && activeAudioWs.readyState === 1) {
+              activeAudioWs.send(JSON.stringify({ action: "endSession" }));
+            }
+          }
+        } catch (err) {
+          console.error("[UI MESSAGE ERROR]", err);
+        }
+      });
+
+      clientWs.on("close", () => {
+        activeUiWss.delete(clientWs);
+      });
+      return;
+    }
+
+    if (role === "audio") {
+      activeAudioWs = clientWs;
+      broadcastToUi({ type: "status", status: "active" });
+      broadcastToUi({ type: "log", msg: "Nova is online — speak naturally", logType: "success" });
+    }
     let session: any = null;
     const db = getDb();
     const activeMode = db.modes.find(m => m.id === db.activeModeId) || db.modes[0];
@@ -462,11 +509,19 @@ ${memoryContext}`;
                 clientWs.send(JSON.stringify({ audio: part.inlineData.data }));
               }
               // Log text parts for memory
-              if (part.text) logTurn("Nova", part.text);
+              if (part.text) {
+                logTurn("Nova", part.text);
+                if (role === "audio") {
+                  broadcastToUi({ type: "transcript", role: "Nova", text: part.text });
+                }
+              }
             }
 
             if (message.serverContent?.interrupted) {
               clientWs.send(JSON.stringify({ interrupted: true }));
+              if (role === "audio") {
+                broadcastToUi({ type: "interrupted" });
+              }
             }
 
             // Handle function calls
@@ -622,6 +677,9 @@ ${memoryContext}`;
         }
         if (payload.text && session) {
           logTurn(userName, payload.text);
+          if (role === "audio") {
+            broadcastToUi({ type: "transcript", role: userName, text: payload.text });
+          }
           session.sendClientContent({ turns: [{ role: "user", parts: [{ text: payload.text }] }] });
         }
       } catch (err) {
@@ -631,6 +689,19 @@ ${memoryContext}`;
 
     clientWs.on("close", async () => {
       console.log("[CLIENT DISCONNECTED] — extracting memories...");
+      if (session) {
+        try {
+          await session.close();
+          console.log("[GEMINI SESSION CLOSED CLEANLY]");
+        } catch (e) {
+          console.error("[GEMINI SESSION CLOSE ERROR]", e);
+        }
+      }
+      if (role === "audio") {
+        activeAudioWs = null;
+        broadcastToUi({ type: "status", status: "idle" });
+        broadcastToUi({ type: "log", msg: "Session closed", logType: "info" });
+      }
       // Extract smart memories from this session in the background
       if (sessionLog.length > 2) {
         const dbLatest = getDb();
@@ -692,7 +763,12 @@ ${memoryContext}`;
   // Vite / static
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: {
+          port: PORT === 22222 ? 24678 : (PORT === 22233 ? 24679 : 24680)
+        }
+      },
       appType: "spa",
     });
     app.use(vite.middlewares);

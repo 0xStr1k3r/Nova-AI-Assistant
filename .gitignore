@@ -9,7 +9,7 @@ dist/
 build/
 *.tsbuildinfo
 .turbo/
-
+progress/
 # Logs
 logs/
 *.log
@@ -75,3 +75,11 @@ Thumbs.db
 server.js
 server.cjs
 .antigravity/
+
+# Nova Assistant specific ignores
+desktop_app
+desktop_app.py
+nova-core/target/
+nova-core/libvosk.so
+nova-core/vosk-model-small-en-us-0.15/
+our_install.sh

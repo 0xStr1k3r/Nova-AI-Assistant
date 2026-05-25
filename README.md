@@ -35,6 +35,12 @@ sudo dnf install -y nodejs npm golang
 
 ## Quick Start Installation
 
+> [!IMPORTANT]
+> **Installation Target Selection & Ports**
+> When you run `./install.sh`, you will be prompted to select one of the following installation targets:
+> 1. **Browser App**: Best for general browser access. Runs the assistant server on port **`22222`**. The voice pipeline and wake word detection run entirely in-browser using standard HTML5 Speech APIs. Access via any web browser at `http://localhost:22222`.
+> 2. **Desktop App (Development Stage)**: Best for native system integration. Runs on port **`22233`**. It compiles an ultra-lightweight C++ desktop container (GTK3/WebKitGTK) and sets up a native Rust audio engine daemon (`nova-audio-desktop.service`) for offline wake-word and microphone access. Registers a searchable launcher shortcut in your system application menu.
+
 Run the unified installer to handle Node dependencies, environment variables, system permissions, and the systemd background daemon.
 
 ```bash
@@ -56,7 +62,7 @@ During installation, you will be prompted to paste your **Gemini API Key**.
 To get a free key, visit the **[Google AI Studio API Keys Page](https://aistudio.google.com)**.
 *If you skip this step, you can manually add the key later inside the `.env` file in the project root: `GEMINI_API_KEY=your_key_here`.*
 
-Once setup finishes, open your browser and navigate to: **[http://localhost:3000](http://localhost:3000)**.
+Once setup finishes, open your browser and navigate to the configured port (e.g. **[http://localhost:22222](http://localhost:22222)** for the Web/Browser target, or **[http://localhost:22233](http://localhost:22233)** for the Desktop target).
 
 ---
 
@@ -135,12 +141,16 @@ Although the background service holds administrative/root privileges, command ex
 
 ## Daemon & Service Management
 
-The installer configures a **Systemd User Service** (`nexus-assistant.service`) so Nova can run in the background.
+The installer configures **Systemd User Services** (running under suffixes `-web` and/or `-desktop` based on your installation target) so Nova and its audio engine run in the background.
 
-| Action | Command |
+### Available Services:
+* **Web Services (Port 22222)**: `nova-assistant-web.service` & `nova-audio-web.service`
+* **Desktop Services (Port 22233)**: `nova-assistant-desktop.service` & `nova-audio-desktop.service`
+
+| Action | Command (replace `<service>` with the active service name) |
 | :--- | :--- |
-| **Check Status** | `systemctl --user status nexus-assistant.service` |
-| **Start Service** | `systemctl --user start nexus-assistant.service` |
-| **Stop Service** | `systemctl --user stop nexus-assistant.service` |
-| **Restart Service** | `systemctl --user restart nexus-assistant.service` |
-| **View Live Logs** | `journalctl --user -u nexus-assistant.service -f` |
+| **Check Status** | `systemctl --user status <service>` |
+| **Start Service** | `systemctl --user start <service>` |
+| **Stop Service** | `systemctl --user stop <service>` |
+| **Restart Service** | `systemctl --user restart <service>` |
+| **View Live Logs** | `journalctl --user -u <service> -f` |
