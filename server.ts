@@ -88,6 +88,29 @@ let activeAgentPrompt = "";
 let activeAgentStartTime = 0;
 const STATUS_LOG_PATH = "/home/chiru/.config/nova-voice-assistant/coding_agent_status.log";
 
+// Helper to write NVIDIA_API_KEY directly into the local .env file
+function writeNvidiaApiKeyToEnv(key: string) {
+  const envPath = path.resolve("/home/chiru/antigravity/Nexus-OS-Voice-Assistant/.env");
+  let content = "";
+  if (fs.existsSync(envPath)) {
+    content = fs.readFileSync(envPath, "utf-8");
+  }
+  const lines = content.split("\n");
+  let found = false;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].startsWith("NVIDIA_API_KEY=")) {
+      lines[i] = `NVIDIA_API_KEY="${key}"`;
+      found = true;
+      break;
+    }
+  }
+  if (!found) {
+    lines.push(`NVIDIA_API_KEY="${key}"`);
+  }
+  fs.writeFileSync(envPath, lines.join("\n"), "utf-8");
+  process.env.NVIDIA_API_KEY = key;
+}
+
 // ─── Model Constants (optimized for free-tier rate limits) ────────────────────
 // Live API voice session: Only model supporting bidirectional audio streaming
 const MODEL_LIVE    = "gemini-3.1-flash-live-preview";
@@ -972,8 +995,8 @@ ${recentConversationsContext}`;
                     }));
 
                     const db = getDb();
-                    const apiKey = db.integrations?.nvidiaApiKey || "";
-                    const model = db.integrations?.nvidiaModel || "meta/llama-3.3-70b-instruct";
+                    const apiKey = process.env.NVIDIA_API_KEY || db.integrations?.nvidiaApiKey || "";
+                    const model = db.integrations?.nvidiaModel || "auto";
 
                     activeAgentRunning = true;
                     activeAgentName = "nvidia";
@@ -1579,7 +1602,12 @@ ${recentConversationsContext}`;
 
   // ─── REST API ──────────────────────────────────────────────────────────────
   app.get("/api/config", (_req, res) => {
-    res.json(getDb());
+    const config = getDb();
+    if (!config.integrations) {
+      config.integrations = { godoEnabled: false, obsidianEnabled: false, obsidianPath: "", customAgentEnabled: false, nvidiaApiKey: "", nvidiaModel: "meta/llama-3.3-70b-instruct" };
+    }
+    config.integrations.nvidiaApiKey = process.env.NVIDIA_API_KEY || "";
+    res.json(config);
   });
 
   app.get("/api/conversations", (_req, res) => {
@@ -1594,6 +1622,15 @@ ${recentConversationsContext}`;
   app.post("/api/config", (req, res) => {
     const db = getDb();
     const newConfig: NovaConfig = { ...db, ...req.body };
+
+    // Extract nvidiaApiKey and write to .env if provided
+    if (req.body.integrations && req.body.integrations.nvidiaApiKey !== undefined) {
+      const apiKey = req.body.integrations.nvidiaApiKey;
+      writeNvidiaApiKeyToEnv(apiKey);
+      if (newConfig.integrations) {
+        newConfig.integrations.nvidiaApiKey = ""; // do not save key in db JSON
+      }
+    }
 
     // Validate Obsidian vault path if enabled
     if (newConfig.integrations?.obsidianEnabled) {
@@ -1615,7 +1652,12 @@ ${recentConversationsContext}`;
     }
 
     saveDb(newConfig);
-    res.json({ success: true, config: getDb() }); // Return merged config with built-in modes
+
+    const mergedResponse = getDb();
+    if (mergedResponse.integrations) {
+      mergedResponse.integrations.nvidiaApiKey = process.env.NVIDIA_API_KEY || "";
+    }
+    res.json({ success: true, config: mergedResponse }); // Return config with env-injected key
   });
 
   app.post("/api/memory/clear", (_req, res) => {

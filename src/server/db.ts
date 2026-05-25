@@ -169,7 +169,7 @@ const defaultConfig: NovaConfig = {
     obsidianPath: "",
     customAgentEnabled: false,
     nvidiaApiKey: "",
-    nvidiaModel: "meta/llama-3.3-70b-instruct",
+    nvidiaModel: "auto",
   },
 };
 
@@ -238,7 +238,7 @@ export function getDb(): NovaConfig {
           obsidianPath: "",
           customAgentEnabled: false,
           nvidiaApiKey: "",
-          nvidiaModel: "meta/llama-3.3-70b-instruct",
+          nvidiaModel: "auto",
         };
       } else {
         if (merged.integrations.customAgentEnabled === undefined) {
@@ -248,7 +248,7 @@ export function getDb(): NovaConfig {
           merged.integrations.nvidiaApiKey = "";
         }
         if (merged.integrations.nvidiaModel === undefined) {
-          merged.integrations.nvidiaModel = "meta/llama-3.3-70b-instruct";
+          merged.integrations.nvidiaModel = "auto";
         }
       }
 

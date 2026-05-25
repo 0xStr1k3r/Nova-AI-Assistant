@@ -811,9 +811,9 @@ export default function SettingsModal({
                     <div className="space-y-1.5">
                       <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">NVIDIA NIM Model</label>
                       <select
-                        value={local.integrations?.nvidiaModel || "meta/llama-3.3-70b-instruct"}
+                        value={local.integrations?.nvidiaModel || "auto"}
                         onChange={e => {
-                          const integrations = local.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "", customAgentEnabled: false, nvidiaApiKey: "", nvidiaModel: "meta/llama-3.3-70b-instruct" };
+                          const integrations = local.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "", customAgentEnabled: false, nvidiaApiKey: "", nvidiaModel: "auto" };
                           setLocal({
                             ...local,
                             integrations: {
@@ -825,11 +825,13 @@ export default function SettingsModal({
                         className="w-full px-3.5 py-2 rounded-xl text-xs text-white focus:outline-none transition-all bg-slate-900 border border-white/10"
                         style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.09)" }}
                       >
-                        <option value="meta/llama-3.3-70b-instruct" className="bg-slate-900 text-white">Llama 3.3 70B Instruct (Recommended)</option>
-                        <option value="qwen/qwen3-coder-480b-a35b-instruct" className="bg-slate-900 text-white">Qwen 3 Coder 480B Instruct</option>
-                        <option value="deepseek-ai/deepseek-coder-6.7b-instruct" className="bg-slate-900 text-white">DeepSeek Coder 6.7B Instruct</option>
-                        <option value="nvidia/llama-3.1-nemotron-70b-instruct" className="bg-slate-900 text-white">Llama 3.1 Nemotron 70B</option>
-                        <option value="mistralai/mixtral-8x22b-instruct-v0.1" className="bg-slate-900 text-white">Mixtral 8x22B Instruct</option>
+                        <option value="auto" className="bg-slate-900 text-white">Auto-Select Model (Recommended)</option>
+                        <option value="meta/llama-3.3-70b-instruct" className="bg-slate-900 text-white">Llama 3.3 70B Instruct (1.28s)</option>
+                        <option value="qwen/qwen3-coder-480b-a35b-instruct" className="bg-slate-900 text-white">Qwen 3 Coder 480B Instruct (2.53s)</option>
+                        <option value="deepseek-ai/deepseek-v4-pro" className="bg-slate-900 text-white">DeepSeek V4 Pro (0.46s)</option>
+                        <option value="meta/llama-3.1-8b-instruct" className="bg-slate-900 text-white">Llama 3.1 8B Instruct (0.21s)</option>
+                        <option value="meta/llama-3.2-11b-vision-instruct" className="bg-slate-900 text-white">Llama 3.2 11B Vision (0.22s)</option>
+                        <option value="mistralai/mistral-large-3-675b-instruct-2512" className="bg-slate-900 text-white">Mistral Large 3 (0.72s)</option>
                       </select>
                     </div>
                   </div>
