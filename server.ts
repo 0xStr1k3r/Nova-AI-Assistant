@@ -605,7 +605,7 @@ ${recentConversationsContext}`;
 
                   let command = "";
                   if (agent === "opencode") {
-                    command = `opencode -p ${JSON.stringify(prompt)}`;
+                    command = `opencode run --dangerously-skip-permissions ${JSON.stringify(prompt)}`;
                   } else if (agent === "claude") {
                     command = `export PAGER=cat && claude --non-interactive -p ${JSON.stringify(prompt)}`;
                   } else if (agent === "copilot") {
