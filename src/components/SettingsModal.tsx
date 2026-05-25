@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import {
   X, Save, Plus, Trash, Brain, Mic, Sliders, User,
   Volume2, ShieldCheck, ShieldOff, Check, Fingerprint,
-  Wand2, ChevronRight, AlertCircle, Wifi, WifiOff, Link2,
+  Wand2, ChevronRight, AlertCircle, Wifi, WifiOff, Link2, Clock,
 } from "lucide-react";
 import { verifier, initVoiceModel, VoiceProfile } from "../utils/voiceProfile";
 
@@ -72,11 +72,21 @@ export default function SettingsModal({
   setConfig: (cfg: ConfigType) => void;
 }) {
   const [local, setLocal]               = useState<ConfigType | null>(null);
-  const [tab, setTab]                   = useState<"profile" | "voice" | "modes" | "integrations" | "memory">("profile");
+  const [tab, setTab]                   = useState<"profile" | "voice" | "modes" | "integrations" | "memory" | "history">("profile");
+  const [conversations, setConversations] = useState<any[]>([]);
   const [saving, setSaving]             = useState(false);
   const [saved, setSaved]               = useState(false);
   const [saveError, setSaveError]       = useState<string | null>(null);
   const [recordingVoice, setRecordingVoice] = useState(false);
+
+  useEffect(() => {
+    if (tab === "history" && isOpen) {
+      fetch("/api/conversations")
+        .then(r => r.json())
+        .then(setConversations)
+        .catch(console.error);
+    }
+  }, [tab, isOpen]);
   const [recordingStatus, setRecordingStatus] = useState<string>("");
   const [newVoiceName, setNewVoiceName] = useState<string>("");
   const [enrollStep, setEnrollStep]     = useState<number>(0);
@@ -259,6 +269,7 @@ export default function SettingsModal({
     { id: "modes",        label: "Modes",        icon: Sliders },
     { id: "integrations", label: "Integrations", icon: Link2 },
     { id: "memory",       label: "Memory",       icon: Brain },
+    { id: "history",      label: "History",      icon: Clock },
   ] as const;
 
   const memoryByCategory = local.memory.reduce((acc, m) => {
@@ -1023,6 +1034,134 @@ export default function SettingsModal({
                   <span className="text-violet-300 font-semibold">How it works:</span> After each session, Nova uses
                   Gemini AI to extract meaningful facts — preferences, patterns, context. Raw outputs and small talk are
                   never saved. These are injected at session start so Nova always knows your context.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* ════ HISTORY TAB ═════════════════════════════════════════════ */}
+          {tab === "history" && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-white">Conversation History</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    {conversations.length} session{conversations.length !== 1 ? "s" : ""} saved locally
+                  </p>
+                </div>
+                {conversations.length > 0 && (
+                  <button
+                    onClick={async () => {
+                      await fetch("/api/conversations/clear", { method: "POST" });
+                      setConversations([]);
+                    }}
+                    className="flex items-center gap-1.5 text-xs text-red-400/60 hover:text-red-400 transition-colors font-semibold"
+                  >
+                    <Trash size={11} /> Clear History
+                  </button>
+                )}
+              </div>
+
+              {conversations.length === 0 ? (
+                <div
+                  className="rounded-2xl p-10 flex flex-col items-center gap-4 text-center"
+                  style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}
+                >
+                  <Clock className="w-10 h-10 text-slate-700" />
+                  <div>
+                    <p className="text-sm text-slate-500 font-semibold">No history found</p>
+                    <p className="text-[11px] text-slate-600 mt-1 max-w-xs">
+                      Conversations will be logged here with date and time stamps as you use the assistant.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4 max-h-[45vh] overflow-y-auto pr-1">
+                  {conversations.map((session, sIdx) => {
+                    const startDate = new Date(session.startTime);
+                    const formattedDate = startDate.toLocaleDateString("en-US", {
+                      weekday: "short",
+                      year: "numeric",
+                      month: "short",
+                      day: "numeric",
+                    });
+                    const formattedTime = startDate.toLocaleTimeString("en-US", {
+                      hour: "2-digit",
+                      minute: "2-digit"
+                    });
+
+                    return (
+                      <div
+                        key={session.id}
+                        className="p-4 rounded-2xl space-y-3"
+                        style={{ background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.05)" }}
+                      >
+                        {/* Session Header */}
+                        <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-violet-400/60" />
+                            <p className="text-xs font-bold text-slate-300">
+                              {formattedDate} at {formattedTime}
+                            </p>
+                          </div>
+                          <span className="text-[10px] text-slate-500 font-mono">
+                            {session.messages.length} message{session.messages.length !== 1 ? "s" : ""}
+                          </span>
+                        </div>
+
+                        {/* Session Messages Snippet */}
+                        <div className="space-y-2">
+                          {session.messages.map((msg: any, mIdx: number) => {
+                            const isUser = msg.role.toLowerCase() !== "nova" && !msg.role.startsWith("Tool");
+                            const isTool = msg.role.startsWith("Tool") || msg.role === "SEARCH" || msg.role === "FETCH" || msg.role === "CMD" || msg.role === "DELEGATE";
+                            
+                            let roleLabel = msg.role;
+                            if (msg.role === "SEARCH") roleLabel = "Web Search";
+                            else if (msg.role === "FETCH") roleLabel = "Page Reader";
+                            else if (msg.role === "CMD") roleLabel = "Linux Command";
+                            else if (msg.role === "DELEGATE") roleLabel = "Pro Model";
+
+                            return (
+                              <div key={mIdx} className="flex gap-2 items-start text-[11px] leading-relaxed">
+                                <span
+                                  className={`px-1.5 py-0.5 rounded font-bold uppercase text-[9px] tracking-wide shrink-0 ${
+                                    isUser
+                                      ? "bg-blue-500/10 text-blue-300 border border-blue-500/20"
+                                      : isTool
+                                      ? "bg-amber-500/10 text-amber-300 border border-amber-500/20"
+                                      : "bg-violet-500/10 text-violet-300 border border-violet-500/20"
+                                  }`}
+                                >
+                                  {roleLabel}
+                                </span>
+                                <div className="text-slate-300 break-words flex-1">
+                                  {msg.text}
+                                </div>
+                                <span className="text-[9px] text-slate-600 font-mono self-center shrink-0">
+                                  {new Date(msg.timestamp).toLocaleTimeString("en-US", {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                    second: "2-digit",
+                                    hour12: false
+                                  })}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="flex items-start gap-2.5 p-3.5 rounded-2xl"
+                style={{ background: "rgba(139,92,246,0.06)", border: "1px solid rgba(139,92,246,0.15)" }}>
+                <Clock size={13} className="text-violet-400 mt-0.5 shrink-0" />
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  <span className="text-violet-300 font-semibold">Continuous Context:</span> Conversation sessions are
+                  saved with precise date and time stamps in an inline JSON database. To help the assistant, the most
+                  recent sessions are automatically summarized and injected into the system prompt of subsequent connections.
                 </p>
               </div>
             </div>

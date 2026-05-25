@@ -11,6 +11,8 @@ import util from "util";
 import {
   getDb, saveDb, addSmartMemory, clearMemory, formatMemoryForPrompt,
   NovaConfig, MemoryEntry,
+  ConversationMessage, ConversationSession, saveConversationSession,
+  getConversationSessions, clearConversationSessions, formatRecentConversationsForPrompt,
 } from "./src/server/db";
 
 const execAsync = util.promisify(exec);
@@ -352,11 +354,31 @@ async function startServer() {
 
     // Session transcript for smart memory extraction at end
     const sessionLog: string[] = [];
+
+    // Conversation logging in JSON database
+    const sessionStartTime = new Date().toISOString();
+    const sessionId = `conv_${Date.now()}`;
+    const conversationSession: ConversationSession = {
+      id: sessionId,
+      startTime: sessionStartTime,
+      messages: [],
+    };
+
     const logTurn = (role: string, text: string) => {
-      if (text.length > 10) sessionLog.push(`${role}: ${text.substring(0, 200)}`);
+      if (text.trim().length > 3) {
+        sessionLog.push(`${role}: ${text.substring(0, 200)}`);
+
+        conversationSession.messages.push({
+          role,
+          text: text.trim(),
+          timestamp: new Date().toISOString(),
+        });
+        saveConversationSession(conversationSession);
+      }
     };
 
     const memoryContext = formatMemoryForPrompt(db.memory);
+    const recentConversationsContext = formatRecentConversationsForPrompt();
 
     const integrations = db.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "" };
     let integrationsPrompt = "";
@@ -380,7 +402,8 @@ VOICE RULES (non-negotiable):
 - NEVER offer further help at the end of responses. Answer and stop.
 - Address the user as ${userName} occasionally to feel personal.
 - When the session starts, say ONLY: "${greeting}" — nothing else. Just that greeting.
-${memoryContext}`;
+${memoryContext}
+${recentConversationsContext}`;
 
     const functionDeclarations: any[] = [
       {
@@ -633,6 +656,11 @@ ${memoryContext}`;
 
     clientWs.on("close", async () => {
       console.log("[CLIENT DISCONNECTED] — extracting memories...");
+      
+      // Save final conversation session log
+      conversationSession.endTime = new Date().toISOString();
+      saveConversationSession(conversationSession);
+
       if (session) {
         try {
           await session.close();
@@ -652,6 +680,15 @@ ${memoryContext}`;
   // ─── REST API ──────────────────────────────────────────────────────────────
   app.get("/api/config", (_req, res) => {
     res.json(getDb());
+  });
+
+  app.get("/api/conversations", (_req, res) => {
+    res.json(getConversationSessions());
+  });
+
+  app.post("/api/conversations/clear", (_req, res) => {
+    clearConversationSessions();
+    res.json({ success: true });
   });
 
   app.post("/api/config", (req, res) => {

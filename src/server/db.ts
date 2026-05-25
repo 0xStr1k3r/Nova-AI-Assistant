@@ -318,3 +318,98 @@ export function formatMemoryForPrompt(memory: MemoryEntry[]): string {
 
   return lines.join("\n");
 }
+
+export interface ConversationMessage {
+  role: string;
+  text: string;
+  timestamp: string;
+}
+
+export interface ConversationSession {
+  id: string;
+  startTime: string;
+  endTime?: string;
+  messages: ConversationMessage[];
+}
+
+const CONVERSATIONS_DIR = path.join(DB_DIR, "conversations");
+if (!fs.existsSync(CONVERSATIONS_DIR)) {
+  fs.mkdirSync(CONVERSATIONS_DIR, { recursive: true });
+}
+
+export function saveConversationSession(session: ConversationSession) {
+  const file = path.join(CONVERSATIONS_DIR, `${session.id}.json`);
+  fs.writeFileSync(file, JSON.stringify(session, null, 2), "utf-8");
+}
+
+export function getConversationSessions(): ConversationSession[] {
+  if (!fs.existsSync(CONVERSATIONS_DIR)) return [];
+  try {
+    const files = fs.readdirSync(CONVERSATIONS_DIR);
+    const sessions: ConversationSession[] = [];
+    for (const file of files) {
+      if (file.endsWith(".json")) {
+        try {
+          const raw = fs.readFileSync(path.join(CONVERSATIONS_DIR, file), "utf-8");
+          sessions.push(JSON.parse(raw));
+        } catch (_) {}
+      }
+    }
+    // Sort by startTime descending (newest first)
+    return sessions.sort((a, b) => b.startTime.localeCompare(a.startTime));
+  } catch (e) {
+    console.error("Error loading conversation sessions:", e);
+    return [];
+  }
+}
+
+export function clearConversationSessions() {
+  if (!fs.existsSync(CONVERSATIONS_DIR)) return;
+  try {
+    const files = fs.readdirSync(CONVERSATIONS_DIR);
+    for (const file of files) {
+      if (file.endsWith(".json")) {
+        fs.unlinkSync(path.join(CONVERSATIONS_DIR, file));
+      }
+    }
+  } catch (e) {
+    console.error("Error clearing conversation sessions:", e);
+  }
+}
+
+/** Format recent conversations for prompt injection */
+export function formatRecentConversationsForPrompt(): string {
+  const sessions = getConversationSessions();
+  if (sessions.length === 0) return "";
+
+  // Take the 3 most recent sessions
+  const recentSessions = sessions.slice(0, 3).reverse();
+  const lines: string[] = ["\n\n--- RECENT CONVERSATIONS (for context) ---"];
+
+  for (const session of recentSessions) {
+    if (session.messages.length === 0) continue;
+    const dateStr = new Date(session.startTime).toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit"
+    });
+    lines.push(`Session (${dateStr}):`);
+    
+    // Filter messages to avoid clogging the context window (take max 8 messages per session)
+    const msgs = session.messages.slice(-8);
+    for (const msg of msgs) {
+      const timeStr = new Date(msg.timestamp).toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false
+      });
+      const truncatedText = msg.text.length > 150 ? msg.text.substring(0, 150) + "..." : msg.text;
+      lines.push(`  [${timeStr}] ${msg.role}: ${truncatedText}`);
+    }
+    lines.push("");
+  }
+  lines.push("---");
+  return lines.join("\n");
+}
