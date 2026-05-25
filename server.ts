@@ -563,8 +563,8 @@ ${memoryContext}`;
       setTimeout(() => {
         try {
           if (session) {
-            session.sendRealtimeInput({
-              text: `Say your greeting now. Just say: "${greeting}"`,
+            session.sendClientContent({
+              turns: [{ role: "user", parts: [{ text: `Say your greeting now. Just say: "${greeting}"` }] }],
             });
           }
         } catch (e) {
@@ -588,7 +588,7 @@ ${memoryContext}`;
         }
         if (payload.text && session) {
           logTurn(userName, payload.text);
-          session.sendRealtimeInput({ text: payload.text });
+          session.sendClientContent({ turns: [{ role: "user", parts: [{ text: payload.text }] }] });
         }
       } catch (err) {
         console.error("[MESSAGE ERROR]", err);
