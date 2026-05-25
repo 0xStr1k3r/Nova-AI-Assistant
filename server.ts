@@ -14,6 +14,14 @@ import {
   ConversationMessage, ConversationSession, saveConversationSession,
   getConversationSessions, clearConversationSessions, formatRecentConversationsForPrompt,
 } from "./src/server/db";
+import {
+  navigate as bNavigate,
+  clickElement as bClick,
+  typeText as bType,
+  captureScreenshot as bScreenshot,
+  playYoutubeQuery as bYoutubePlay,
+  closeBrowser as bClose
+} from "./browser_automations/browser";
 
 const execAsync = util.promisify(exec);
 
@@ -522,17 +530,30 @@ ${recentConversationsContext}`;
 
       functionDeclarations.push({
         name: "openBrowser",
-        description: "Opens the default web browser on the local Linux desktop and navigates to a URL or searches/plays a song on YouTube. Use this whenever the user asks to open a site, navigate to a webpage, or play music/songs/videos on YouTube.",
+        description: "Opens the default web browser on the local Linux desktop and automates interactions (navigating, clicking buttons, typing text, scrolling, playing YouTube videos, capturing screenshots, or closing the browser). Use this whenever the user asks to open a site, navigate to a webpage, play music, click a button, fill a form field, or take a screenshot.",
         parameters: {
           type: Type.OBJECT,
           properties: {
+            action: {
+              type: Type.STRING,
+              enum: ["navigate", "click", "type", "screenshot", "close"],
+              description: "The browser automation action to perform. Defaults to 'navigate' if url or youtubeSearchQuery is provided.",
+            },
             url: {
               type: Type.STRING,
-              description: "The exact URL to navigate to (e.g. 'https://github.com'). Optional if youtubeSearchQuery is provided.",
+              description: "The exact URL to navigate to (e.g. 'https://github.com'). Optional.",
             },
             youtubeSearchQuery: {
               type: Type.STRING,
-              description: "The name of a song, artist, or video query to search and play on YouTube (e.g. 'shape of you ed sheeran'). Optional if url is provided.",
+              description: "The name of a song, artist, or video query to search and play on YouTube (e.g. 'shape of you ed sheeran'). Optional.",
+            },
+            selector: {
+              type: Type.STRING,
+              description: "The CSS selector of the button, input, or element to click or type into. Required if action is 'click' or 'type'.",
+            },
+            text: {
+              type: Type.STRING,
+              description: "The text to type into a form field. Required if action is 'type'.",
             },
           },
           required: [],
@@ -764,50 +785,44 @@ SUCCESS: ${code === 0}
                     },
                   });
                 } else if (call.name === "openBrowser") {
+                  const action = ((call.args as any).action as string) || "navigate";
                   const url = (call.args as any).url as string;
                   const youtubeSearchQuery = (call.args as any).youtubeSearchQuery as string;
+                  const selector = (call.args as any).selector as string;
+                  const text = (call.args as any).text as string;
                   
-                  logTurn("BROWSER", `Opening browser: URL=${url || "none"}, Query=${youtubeSearchQuery || "none"}`);
-
-                  let targetUrl = "";
-                  if (youtubeSearchQuery) {
-                    const encoded = encodeURIComponent(youtubeSearchQuery);
-                    targetUrl = `https://www.youtube.com/results?search_query=${encoded}`;
-                  } else if (url) {
-                    targetUrl = url;
-                    if (!/^https?:\/\//i.test(targetUrl)) {
-                      targetUrl = 'https://' + targetUrl;
-                    }
-                  }
+                  logTurn("BROWSER", `Automating browser: Action=${action}, URL=${url || "none"}, Query=${youtubeSearchQuery || "none"}`);
 
                   let resultStr = "";
                   let success = true;
-                  if (!targetUrl) {
-                    resultStr = "ERROR: Neither URL nor YouTube search query was provided.";
-                    success = false;
-                  } else {
-                    try {
-                      const xdgCommand = `export DISPLAY=:0 && xdg-open ${JSON.stringify(targetUrl)}`;
-                      console.log(`[BROWSER SPAWN] Executing: ${xdgCommand}`);
-                      
-                      await execAsync(xdgCommand, {
-                        timeout: 5000,
-                      });
-                      resultStr = `Successfully opened browser and navigated to: ${targetUrl}`;
-                      console.log(`[BROWSER OK] Opened ${targetUrl}`);
-                    } catch (error: any) {
-                      success = false;
-                      try {
-                        console.log(`[BROWSER FALLBACK] Retrying standard xdg-open without DISPLAY...`);
-                        await execAsync(`xdg-open ${JSON.stringify(targetUrl)}`, { timeout: 5000 });
-                        resultStr = `Successfully opened browser via fallback: ${targetUrl}`;
-                        success = true;
-                        console.log(`[BROWSER FALLBACK OK] Opened ${targetUrl}`);
-                      } catch (err2: any) {
-                        resultStr = `ERROR: Failed to open browser. ${error.message} (Fallback error: ${err2.message})`;
-                        console.error(`[BROWSER FAIL] ${targetUrl}`, error.message);
-                      }
+                  let targetUrl = url || youtubeSearchQuery || "Automated interaction";
+
+                  try {
+                    if (youtubeSearchQuery) {
+                      resultStr = await bYoutubePlay(youtubeSearchQuery);
+                      targetUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(youtubeSearchQuery)}`;
+                    } else if (action === "navigate" && url) {
+                      resultStr = await bNavigate(url);
+                      targetUrl = url;
+                    } else if (action === "click") {
+                      if (!selector) throw new Error("CSS selector is required to click.");
+                      resultStr = await bClick(selector);
+                    } else if (action === "type") {
+                      if (!selector || !text) throw new Error("Selector and text are required for typing.");
+                      resultStr = await bType(selector, text);
+                    } else if (action === "screenshot") {
+                      resultStr = await bScreenshot();
+                    } else if (action === "close") {
+                      await bClose();
+                      resultStr = "Closed the browser successfully.";
+                    } else {
+                      throw new Error(`Unsupported browser action: "${action}" or missing parameters.`);
                     }
+                    console.log(`[BROWSER OK] ${resultStr}`);
+                  } catch (error: any) {
+                    success = false;
+                    resultStr = `ERROR: Failed browser automation. ${error.message}`;
+                    console.error(`[BROWSER FAIL] Action=${action}`, error.message);
                   }
 
                   clientWs.send(JSON.stringify({
