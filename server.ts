@@ -80,7 +80,7 @@ import {
   launchApplication,
   listInstalledApplications,
 } from "./src/server/gui-automation";
-import { runCustomNvidiaAgent, cancelledAgents } from "./agent/nvidia-agent";
+import { runCustomNvidiaAgent, runOrchestratedNvidiaAgent, cancelledAgents } from "./agent";
 
 const execAsync = util.promisify(exec);
 
@@ -1095,8 +1095,8 @@ ${recentConversationsContext}`;
                     prompt
                   }));
 
-                  // Start the agent loop asynchronously in the background
-                  runCustomNvidiaAgent(agentId, prompt, apiKey, selectedModel, logPath, (msg) => {
+                  // Start the orchestrated agent loop asynchronously in the background
+                  runOrchestratedNvidiaAgent(agentId, prompt, apiKey, selectedModel, logPath, (msg) => {
                     if (clientWs.readyState === 1 /* OPEN */) {
                       clientWs.send(JSON.stringify({
                         action: "agent_log",
