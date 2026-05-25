@@ -14,7 +14,7 @@ The GUI automation system is built with **4 independent, modular components**:
 
 1. **Display Manager** (`src/server/display-manager.ts`) - Environment detection
 2. **Screenshot Engine** (`src/server/screenshot-engine.ts`) - Full desktop capture with fallbacks
-3. **Desktop Control** (`browser_automations/desktop-control.ts`) - Window & input management
+3. **Desktop Control** (`browser_automation/desktop-control.ts`) - Window & input management
 4. **GUI Automation** (`src/server/gui-automation.ts`) - High-level orchestration
 
 Each module operates independently and can be used standalone or combined.
@@ -595,7 +595,7 @@ You can use individual modules in your own code:
 ```typescript
 import { getDisplayInfo, isX11 } from "./src/server/display-manager";
 import { captureDesktopScreenshot } from "./src/server/screenshot-engine";
-import { listWindows, focusWindow } from "./browser_automations/desktop-control";
+import { listWindows, focusWindow } from "./browser_automation/desktop-control";
 
 // Example: Auto-setup based on environment
 async function setupAutomation() {

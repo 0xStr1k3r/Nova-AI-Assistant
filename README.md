@@ -11,7 +11,7 @@ Nova is a high-tech personal AI voice assistant powered by the **Gemini Live API
 - 🧠 **Persistent Memory**: A token-efficient fact extraction system that identifies your preferences and habits, storing them dynamically across sessions.
 - 🎭 **8 Operating Modes**: Select custom restriction levels (Assistant, Focus, Deep Dive, Sysadmin, Dev, Unrestricted, Creative, Tutor) in the settings.
 - 🌐 **Browser-Native Pipeline**: Voice pipeline and wake word detection run entirely in-browser using standard HTML5 Speech APIs. Access via any web browser at `http://localhost:22222`.
-- 🌐 **Advanced Browser Automation Suite (`openBrowser`)**: A fully modular, ultra-lightweight Puppeteer-Core engine that hooks natively into your **existing system Chromium** (`/usr/bin/chromium`) for zero-overhead browser control (clicking, typing, scrolling, multi-tab switching, cookie administration, PDF generation, visual screenshot description analysis via Gemini 2.0 Flash, pagination clicking, and browser/system master sound adjustments).
+- 🌐 **Advanced Browser Automation Suite (`openBrowser`)**: A fully modular Puppeteer-Core engine that hooks into your **existing system Chromium** (`/usr/bin/chromium`) for navigation, Google search, human-like input, multi-tab control, bookmarks, cookie administration, PDF generation, visual screenshot analysis via Gemini 2.0 Flash, pagination clicking, and browser/system sound adjustments.
 
 ## Prerequisites
 
@@ -125,7 +125,7 @@ When the integration is enabled, Nova will be aware of your vault directory. If 
 
 ## Advanced Browser Automation Suite (openBrowser)
 
-Nova is equipped with a fully decoupled, highly modular **Browser Automation Engine** inside `browser_automations/` powered by `puppeteer-core`. Instead of downloading heavy, resource-intensive third-party browsers (which take 500MB+ in size), it hooks natively into your **existing system Chromium browser** (`/usr/bin/chromium`), ensuring a virtually non-existent CPU and storage footprint.
+Nova is equipped with a fully decoupled, highly modular **Browser Automation Engine** inside `browser_automation/` powered by `puppeteer-core`. The browser layer is split into **engine, navigation, tabs, human-like input, content extraction, media control, understanding, memory, and vision** modules to keep everything clean and extensible. Instead of downloading heavy, resource-intensive third-party browsers (which take 500MB+ in size), it hooks natively into your **existing system Chromium browser** (`/usr/bin/chromium`), ensuring a virtually non-existent CPU and storage footprint.
 
 ### Browser Actions & Voice Commands
 
@@ -133,14 +133,26 @@ When Nova is in a mode that permits system command execution, you can command br
 
 * **Multimodal Visual Analysis (`"analyze"`)**
   * *"Nova, look at my screen and tell me what you see"* -> Captures a high-definition viewport screenshot, passes it directly to `gemini-2.0-flash` on the backend, and describes or answers visual questions about the active webpage layout.
+* **Google Search & Navigation (`"search"`, `"navigate"`, `"history"`, `"waitForLoad"`)**
+  * *"Search AI news"*, *"Go back"*, *"Wait for the page to load"* -> Performs search, navigation, and load-state control.
+* **Smart Visual Clicks (`"clickByText"`)**
+  * *"Click the login button"* -> Finds the most likely clickable element by label/aria text and clicks it.
+* **OCR Text & Visual Click (`"ocr"`, `"clickByOcr"`)**
+  * *"Read text on the page"* or *"Click the word Continue"* -> Runs OCR on the viewport and clicks by detected text (requires `tesseract` installed).
 * **Autoplay Music & Video (`"youtubePlay"`)**
   * *"Play Shape of You by Ed Sheeran"* -> Opens YouTube, searches your query, clicks the first result, and starts playing music automatically with ad-skip systems active.
+* **Human-like Input (`"rightClick"`, `"doubleClick"`, `"dragDrop"`, `"shortcut"`)**
+  * *"Right-click the profile icon"*, *"Drag the slider to 50%"*, *"Press Ctrl+L"* -> Performs realistic mouse/keyboard actions with smooth movement and natural typing cadence.
 * **Tab & Browser Sound Control (`"controlMedia"` & `"systemVolume"`)**
   * *"Mute the browser"*, *"Pause playback"*, *"Unmute system audio"*, *"Set system volume to 80%"* -> Seamlessly adjusts browser element volume levels or host desktop Master audio volume using system `wpctl` bindings.
+* **Tab Intelligence & Bookmarks (`"tab"`, `"bookmark"`)**
+  * *"Open Amazon in a new tab"*, *"Switch to the Gmail tab"*, *"Bookmark this page"* -> Multi-tab management with saved bookmark memory.
 * **Progressive Navigation & Pagination (`"click"`, `"type"`, `"clickNext"`)**
   * *"Type hello into the search bar"*, *"Click the login button"*, *"Go to the next page"* -> Programmatically scrolls, fills forms, clicks links, and intelligently locates and clicks pagination next buttons/arrows (`→`, `>`, `Next`).
 * **Session & Layout Extraction (`"details"`, `"pdf"`, `"cookies"`, `"html"`)**
   * *"Print this page as a PDF"*, *"Show me active session cookies"*, *"Extract page source code"* -> Automatically saves page PDFs, extracts tab metadata, displays cookie tokens, or harvests raw DOM code.
+
+> **Optional OCR Support:** Install `tesseract` to enable `"ocr"` and `"clickByOcr"` actions.
 
 ---
 

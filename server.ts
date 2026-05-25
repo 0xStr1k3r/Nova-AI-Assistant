@@ -22,22 +22,46 @@ import {
   playYoutubeQuery as bYoutubePlay,
   closeBrowser as bClose,
   scrollPage as bScroll,
+  moveMouse as bMoveMouse,
   extractPageText as bExtractText,
   extractPageLinks as bExtractLinks,
   evaluateJs as bEvaluateJs,
   controlMedia as bControlMedia,
   getPageDetails as bPageDetails,
+  searchGoogle as bSearch,
   navigateHistory as bHistory,
   hoverElement as bHover,
+  rightClickElement as bRightClick,
+  doubleClickElement as bDoubleClick,
+  dragAndDrop as bDragDrop,
   pressKeyboardKey as bKeyPress,
+  pressShortcut as bShortcut,
   savePageAsPdf as bPdf,
   manageTabAction as bTab,
+  openNewTab as bOpenTab,
+  switchTabByTitle as bSwitchTabTitle,
   manageCookiesAction as bCookies,
   extractPageHtml as bHtml,
   getBrowserAndPage as bGetBrowserPage,
   clickNextButton as bClickNext,
-  adjustSystemVolume as bSystemVolume
-} from "./browser_automations/browser";
+  adjustSystemVolume as bSystemVolume,
+  waitForLoadState as bWaitForLoad,
+  getLoadingState as bLoadingState,
+  addBookmark as bBookmarkAdd,
+  listBookmarks as bBookmarkList,
+  removeBookmark as bBookmarkRemove,
+  capturePageScreenshotBase64 as bScreenshotBase64,
+  clickByText as bClickByText,
+  getVisualMap as bVisualMap,
+  smartClick as bSmartClick,
+  extractOcrText as bOcrText,
+  clickByOcrText as bClickByOcr,
+  blockResources as bBlockResources,
+  configureStealthAndAgent as bConfigureStealth,
+  autoAcceptDialogs as bDialogs,
+  autoScrollPage as bAutoScroll,
+  extractTableData as bExtractTable
+} from "./browser_automation/browser";
 import {
   getSystemInfo,
   captureScreenshot as guiCaptureScreenshot,
@@ -451,7 +475,7 @@ CAPABILITIES:
   2. CONTEXT: List all files to be read/modified, active types/interfaces, or backend schemas.
   3. STEP-BY-STEP WORK: Provide precise requirements, design patterns, and edge cases to handle.
   4. VERIFICATION PLAN: Specify exactly what tests to run, how to build/compile, and what command commands to use to confirm success.
-- You have the openBrowser tool to open the default web browser on the local Linux desktop and perform a rich set of browser automation actions (navigating, clicking elements, typing text, scrolling, autoplaying YouTube queries, taking screenshots, closing browser, evaluation custom JavaScript code, playing/pausing/muting media and skipping ads, fetching page details/metadata, history navigation (back/forward/reload), hovering elements, pressing keyboard keys, exporting pages to PDF, managing multiple tabs, administering page session cookies, or extracting raw inner HTML).
+- You have the openBrowser tool to open the default web browser on the local Linux desktop and perform a rich set of browser automation actions (navigating, clicking elements, typing text, scrolling, autoplaying YouTube queries, taking screenshots, closing browser, evaluation custom JavaScript code, playing/pausing/muting media and skipping ads, fetching page details/metadata, history navigation (back/forward/reload), hovering elements, pressing keyboard keys, exporting pages to PDF, managing multiple tabs, administering page session cookies, extracting raw inner HTML, dynamic resource/ad blocking, stealth/User-Agent configuration, popup alert dialog handling, dynamic infinite auto-scrolling, or tabular markdown data extraction).
 VOICE RULES (non-negotiable):
 - Max 2-3 SHORT sentences per response. You are being spoken aloud.
 - NEVER say "Is there anything else I can help you with?" or any variant of that. EVER.
@@ -560,17 +584,20 @@ ${recentConversationsContext}`;
 
       functionDeclarations.push({
         name: "openBrowser",
-        description: "Opens the default web browser on the local Linux desktop and automates interactions (navigating, clicking buttons, typing text, scrolling, playing YouTube videos, capturing screenshots, extracting page data, or closing the browser). Use this whenever the user asks to open a site, navigate, click, fill forms, play music, skip ads, or get page text.",
+        description: "Opens the default web browser on the local Linux desktop and automates interactions (navigation, Google search, human-like input, tab management, bookmarks, visual analysis, media control, and data extraction). Use this whenever the user asks to open a site, search, click by text, fill forms, play media, or manage tabs/bookmarks.",
         parameters: {
           type: Type.OBJECT,
           properties: {
             action: {
               type: Type.STRING,
               enum: [
-                "navigate", "click", "type", "screenshot", "close", "scroll", 
+                "navigate", "search", "click", "type", "screenshot", "close", "scroll",
                 "extractText", "extractLinks", "evaluateJs", "controlMedia",
-                "details", "history", "hover", "keypress", "pdf", "tab", "cookies", "html",
-                "clickNext", "systemVolume", "analyze"
+                "details", "history", "hover", "rightClick", "doubleClick", "dragDrop",
+                "keypress", "shortcut", "moveMouse", "pdf", "tab", "cookies", "html",
+                "clickNext", "systemVolume", "loadingState", "waitForLoad", "bookmark",
+                "clickByText", "smartClick", "visualMap", "ocr", "clickByOcr", "analyze",
+                "blockResources", "stealth", "dialogs", "autoScroll", "extractTable"
               ],
               description: "The browser automation action to perform. Defaults to 'navigate' if url or youtubeSearchQuery is provided.",
             },
@@ -581,6 +608,10 @@ ${recentConversationsContext}`;
             youtubeSearchQuery: {
               type: Type.STRING,
               description: "The name of a song, artist, or video query to search and play on YouTube (e.g. 'shape of you ed sheeran'). Optional.",
+            },
+            searchQuery: {
+              type: Type.STRING,
+              description: "The query to search on Google (e.g. 'AI news today'). Required if action is 'search'.",
             },
             selector: {
               type: Type.STRING,
@@ -598,6 +629,14 @@ ${recentConversationsContext}`;
             scrollAmount: {
               type: Type.INTEGER,
               description: "The amount of pixels to scroll. Optional.",
+            },
+            dragSourceSelector: {
+              type: Type.STRING,
+              description: "CSS selector for the drag source element. Required if action is 'dragDrop'.",
+            },
+            dragTargetSelector: {
+              type: Type.STRING,
+              description: "CSS selector for the drag target element. Required if action is 'dragDrop'.",
             },
             jsCode: {
               type: Type.STRING,
@@ -617,14 +656,22 @@ ${recentConversationsContext}`;
               type: Type.STRING,
               description: "The physical keyboard key to press (e.g. 'Enter', 'Tab', 'Backspace'). Required if action is 'keypress'.",
             },
+            shortcut: {
+              type: Type.STRING,
+              description: "Keyboard shortcut combo (e.g. 'Ctrl+L', 'Ctrl+Shift+T'). Required if action is 'shortcut'.",
+            },
             tabAction: {
               type: Type.STRING,
-              enum: ["new", "close", "switch", "list"],
+              enum: ["new", "close", "switch", "list", "openUrl", "switchByTitle"],
               description: "The browser tab management action to perform. Required if action is 'tab'.",
             },
             tabIndex: {
               type: Type.INTEGER,
               description: "The 1-based index of the tab to target (required if tabAction is 'switch' or 'close' and specifying a particular tab).",
+            },
+            tabTitle: {
+              type: Type.STRING,
+              description: "Tab title keyword to switch to (required if tabAction is 'switchByTitle').",
             },
             cookieAction: {
               type: Type.STRING,
@@ -647,6 +694,60 @@ ${recentConversationsContext}`;
             volumePercent: {
               type: Type.INTEGER,
               description: "The target volume level percentage (from 0 to 100). Required if volumeAction is 'set' or mediaAction is 'setVolume'.",
+            },
+            loadState: {
+              type: Type.STRING,
+              enum: ["domcontentloaded", "load", "networkidle"],
+              description: "The load state to wait for. Required if action is 'waitForLoad'.",
+            },
+            bookmarkAction: {
+              type: Type.STRING,
+              enum: ["add", "list", "remove"],
+              description: "Bookmark management action. Required if action is 'bookmark'.",
+            },
+            bookmarkTitle: {
+              type: Type.STRING,
+              description: "Bookmark title (optional for add).",
+            },
+            bookmarkUrl: {
+              type: Type.STRING,
+              description: "Bookmark URL (optional for add, defaults to current page).",
+            },
+            bookmarkIdentifier: {
+              type: Type.STRING,
+              description: "Bookmark URL or title to remove (required for bookmark remove).",
+            },
+            label: {
+              type: Type.STRING,
+              description: "Visible label text to click (used by action 'clickByText').",
+            },
+            visualLimit: {
+              type: Type.INTEGER,
+              description: "Maximum number of elements to include in the visual map (used by action 'visualMap').",
+            },
+            blockedTypesString: {
+              type: Type.STRING,
+              description: "Comma-separated list of resource types to block (e.g. 'image,stylesheet,font,ads'). Required if action is 'blockResources'.",
+            },
+            maxScrolls: {
+              type: Type.INTEGER,
+              description: "Maximum number of scroll cycles to perform. Required if action is 'autoScroll'.",
+            },
+            delayMs: {
+              type: Type.INTEGER,
+              description: "Delay in milliseconds between scroll cycles. Optional for autoScroll.",
+            },
+            userAgent: {
+              type: Type.STRING,
+              description: "Custom User-Agent header string. Required if action is 'stealth'.",
+            },
+            acceptLanguage: {
+              type: Type.STRING,
+              description: "Custom Accept-Language header string. Optional for stealth.",
+            },
+            enableDialogs: {
+              type: Type.BOOLEAN,
+              description: "Whether to auto-accept dialog popups (true/false). Required if action is 'dialogs'.",
             },
           },
           required: [],
@@ -978,23 +1079,41 @@ SUCCESS: ${code === 0}
                   const action = ((call.args as any).action as string) || "navigate";
                   const url = (call.args as any).url as string;
                   const youtubeSearchQuery = (call.args as any).youtubeSearchQuery as string;
+                  const searchQuery = (call.args as any).searchQuery as string;
                   const selector = (call.args as any).selector as string;
                   const text = (call.args as any).text as string;
                   const scrollDirection = (call.args as any).scrollDirection as "up" | "down";
                   const scrollAmount = (call.args as any).scrollAmount as number;
+                  const dragSourceSelector = (call.args as any).dragSourceSelector as string;
+                  const dragTargetSelector = (call.args as any).dragTargetSelector as string;
                   const jsCode = (call.args as any).jsCode as string;
                   const mediaAction = (call.args as any).mediaAction as "play" | "pause" | "mute" | "unmute" | "skipAd" | "volumeUp" | "volumeDown" | "setVolume";
                   
                   const historyAction = (call.args as any).historyAction as "back" | "forward" | "reload";
                   const key = (call.args as any).key as string;
-                  const tabAction = (call.args as any).tabAction as "new" | "close" | "switch" | "list";
+                  const shortcut = (call.args as any).shortcut as string;
+                  const tabAction = (call.args as any).tabAction as "new" | "close" | "switch" | "list" | "openUrl" | "switchByTitle";
                   const tabIndex = (call.args as any).tabIndex as number;
+                  const tabTitle = (call.args as any).tabTitle as string;
                   const cookieAction = (call.args as any).cookieAction as "get" | "clear" | "set";
                   const cookieName = (call.args as any).cookieName as string;
                   const cookieValue = (call.args as any).cookieValue as string;
                   
                   const volumeAction = (call.args as any).volumeAction as "up" | "down" | "mute" | "unmute" | "set";
                   const volumePercent = (call.args as any).volumePercent as number;
+                  const loadState = (call.args as any).loadState as "domcontentloaded" | "load" | "networkidle";
+                  const bookmarkAction = (call.args as any).bookmarkAction as "add" | "list" | "remove";
+                  const bookmarkTitle = (call.args as any).bookmarkTitle as string;
+                  const bookmarkUrl = (call.args as any).bookmarkUrl as string;
+                  const bookmarkIdentifier = (call.args as any).bookmarkIdentifier as string;
+                  const label = (call.args as any).label as string;
+                  
+                  const blockedTypesString = (call.args as any).blockedTypesString as string;
+                  const maxScrolls = (call.args as any).maxScrolls as number;
+                  const delayMs = (call.args as any).delayMs as number;
+                  const userAgent = (call.args as any).userAgent as string;
+                  const acceptLanguage = (call.args as any).acceptLanguage as string;
+                  const enableDialogs = (call.args as any).enableDialogs as boolean;
                   
                   logTurn("BROWSER", `Automating browser: Action=${action}, URL=${url || "none"}, Query=${youtubeSearchQuery || "none"}`);
 
@@ -1006,15 +1125,28 @@ SUCCESS: ${code === 0}
                     if (youtubeSearchQuery) {
                       resultStr = await bYoutubePlay(youtubeSearchQuery);
                       targetUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(youtubeSearchQuery)}`;
+                    } else if (action === "search") {
+                      if (!searchQuery) throw new Error("searchQuery is required for Google search.");
+                      resultStr = await bSearch(searchQuery);
+                      targetUrl = `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`;
                     } else if (action === "navigate" && url) {
                       resultStr = await bNavigate(url);
                       targetUrl = url;
                     } else if (action === "click") {
                       if (!selector) throw new Error("CSS selector is required to click.");
                       resultStr = await bClick(selector);
+                    } else if (action === "rightClick") {
+                      if (!selector) throw new Error("CSS selector is required to right-click.");
+                      resultStr = await bRightClick(selector);
+                    } else if (action === "doubleClick") {
+                      if (!selector) throw new Error("CSS selector is required to double-click.");
+                      resultStr = await bDoubleClick(selector);
                     } else if (action === "type") {
                       if (!selector || !text) throw new Error("Selector and text are required for typing.");
                       resultStr = await bType(selector, text);
+                    } else if (action === "dragDrop") {
+                      if (!dragSourceSelector || !dragTargetSelector) throw new Error("dragSourceSelector and dragTargetSelector are required.");
+                      resultStr = await bDragDrop(dragSourceSelector, dragTargetSelector);
                     } else if (action === "screenshot") {
                       resultStr = await bScreenshot();
                     } else if (action === "close") {
@@ -1023,6 +1155,9 @@ SUCCESS: ${code === 0}
                     } else if (action === "scroll") {
                       if (!scrollDirection) throw new Error("Scroll direction ('up' or 'down') is required.");
                       resultStr = await bScroll(scrollDirection, scrollAmount);
+                    } else if (action === "moveMouse") {
+                      if (!selector) throw new Error("CSS selector is required to move mouse.");
+                      resultStr = await bMoveMouse(selector);
                     } else if (action === "extractText") {
                       resultStr = await bExtractText(selector);
                     } else if (action === "extractLinks") {
@@ -1044,11 +1179,23 @@ SUCCESS: ${code === 0}
                     } else if (action === "keypress") {
                       if (!key) throw new Error("Key name is required for keypress.");
                       resultStr = await bKeyPress(key);
+                    } else if (action === "shortcut") {
+                      if (!shortcut) throw new Error("Shortcut string is required (e.g. Ctrl+L).");
+                      const keys = shortcut.split("+").map((k) => k.trim()).filter(Boolean);
+                      resultStr = await bShortcut(keys);
                     } else if (action === "pdf") {
                       resultStr = await bPdf();
                     } else if (action === "tab") {
                       if (!tabAction) throw new Error("Tab action ('new', 'close', 'switch', 'list') is required.");
-                      resultStr = await bTab(tabAction, tabIndex);
+                      if (tabAction === "openUrl") {
+                        if (!url) throw new Error("URL is required for tabAction 'openUrl'.");
+                        resultStr = await bOpenTab(url);
+                      } else if (tabAction === "switchByTitle") {
+                        if (!tabTitle) throw new Error("tabTitle is required for tabAction 'switchByTitle'.");
+                        resultStr = await bSwitchTabTitle(tabTitle);
+                      } else {
+                        resultStr = await bTab(tabAction, tabIndex);
+                      }
                     } else if (action === "cookies") {
                       if (!cookieAction) throw new Error("Cookie action ('get', 'clear', 'set') is required.");
                       resultStr = await bCookies(cookieAction, cookieName, cookieValue);
@@ -1059,9 +1206,34 @@ SUCCESS: ${code === 0}
                     } else if (action === "systemVolume") {
                       if (!volumeAction) throw new Error("Volume action ('up', 'down', 'mute', 'unmute', 'set') is required.");
                       resultStr = await bSystemVolume(volumeAction, volumePercent);
+                    } else if (action === "loadingState") {
+                      resultStr = await bLoadingState();
+                    } else if (action === "waitForLoad") {
+                      if (!loadState) throw new Error("loadState is required for waitForLoad.");
+                      resultStr = await bWaitForLoad(loadState);
+                    } else if (action === "bookmark") {
+                      if (!bookmarkAction) throw new Error("bookmarkAction is required for bookmark.");
+                      if (bookmarkAction === "list") {
+                        resultStr = bBookmarkList();
+                      } else if (bookmarkAction === "remove") {
+                        if (!bookmarkIdentifier) throw new Error("bookmarkIdentifier is required for remove.");
+                        resultStr = bBookmarkRemove(bookmarkIdentifier);
+                      } else {
+                        const { page } = await bGetBrowserPage();
+                        const pageTitle = bookmarkTitle || (await page.title());
+                        const pageUrl = bookmarkUrl || page.url();
+                        resultStr = bBookmarkAdd(pageTitle, pageUrl);
+                      }
+                    } else if (action === "clickByText") {
+                      if (!label) throw new Error("label is required for clickByText.");
+                      resultStr = await bClickByText(label);
+                    } else if (action === "ocr") {
+                      resultStr = await bOcrText();
+                    } else if (action === "clickByOcr") {
+                      if (!label) throw new Error("label is required for clickByOcr.");
+                      resultStr = await bClickByOcr(label);
                     } else if (action === "analyze") {
-                      const { page } = await bGetBrowserPage();
-                      const base64 = await page.screenshot({ encoding: "base64" });
+                      const base64 = await bScreenshotBase64(true);
                       console.log(`[BROWSER-VISION] Screenshot captured. Sending to gemini-2.0-flash for visual description...`);
                       const promptText = text || "Describe this browser screenshot in detail, including the active page content, key layout elements, and any visible interactive fields.";
                       const visionRes = await ai.models.generateContent({
@@ -1084,6 +1256,19 @@ SUCCESS: ${code === 0}
                         ]
                       });
                       resultStr = visionRes.candidates?.[0]?.content?.parts?.[0]?.text || "Failed to analyze screen.";
+                    } else if (action === "blockResources") {
+                      if (!blockedTypesString) throw new Error("blockedTypesString is required for blockResources.");
+                      const types = blockedTypesString.split(",").map(t => t.trim()).filter(Boolean);
+                      resultStr = await bBlockResources(types);
+                    } else if (action === "stealth") {
+                      resultStr = await bConfigureStealth(userAgent, acceptLanguage);
+                    } else if (action === "dialogs") {
+                      if (enableDialogs === undefined) throw new Error("enableDialogs (boolean) is required for dialogs action.");
+                      resultStr = await bDialogs(enableDialogs);
+                    } else if (action === "autoScroll") {
+                      resultStr = await bAutoScroll(maxScrolls, delayMs);
+                    } else if (action === "extractTable") {
+                      resultStr = await bExtractTable(selector);
                     } else {
                       throw new Error(`Unsupported browser action: "${action}" or missing parameters.`);
                     }
