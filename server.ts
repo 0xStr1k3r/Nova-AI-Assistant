@@ -15,6 +15,13 @@ import {
 
 const execAsync = util.promisify(exec);
 
+// ─── Model Constants (optimized for free-tier rate limits) ────────────────────
+// Live API voice session: Only model supporting bidirectional audio streaming
+const MODEL_LIVE    = "gemini-3-flash-live";
+// Memory extraction & utility tasks: Best free-tier limits (15 RPM, 350K TPM, 500 RPD)
+const MODEL_MEMORY  = "gemini-3.1-flash-lite";
+const MODEL_UTILITY = "gemini-3.1-flash-lite";
+
 // ─── Smart Memory Extraction ──────────────────────────────────────────────────
 // Uses a lightweight Gemini call to extract meaningful facts from a session transcript
 async function extractAndSaveMemories(
@@ -59,7 +66,7 @@ ${transcript.substring(0, 3000)}`;
 
   try {
     const result = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: MODEL_MEMORY,
       contents: [{ role: "user", parts: [{ text: prompt }] }],
     });
     const raw = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
@@ -292,6 +299,35 @@ async function performFetchPage(urlStr: string): Promise<string> {
   }
 }
 
+// ─── Search Result Summarization ──────────────────────────────────────────────
+// Uses a lightweight model to condense raw search results into a brief summary
+async function summarizeSearchResults(
+  ai: GoogleGenAI,
+  query: string,
+  results: any[]
+): Promise<string> {
+  if (!results || results.length === 0) return "No results found.";
+  const raw = results.map((r, i) => `${i + 1}. ${r.title || ""}: ${r.snippet || ""}`).join("\n");
+  try {
+    const result = await ai.models.generateContent({
+      model: MODEL_UTILITY,
+      contents: [{ role: "user", parts: [{ text: `Summarize these search results for the query "${query}" into a concise, informative paragraph (max 3-4 sentences). Include key facts and numbers. Do NOT add any preamble like "Here is a summary".
+
+Search Results:
+${raw.substring(0, 3000)}` }] }],
+    });
+    const summary = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    if (summary && summary.length > 10) {
+      console.log(`[SEARCH SUMMARY] Condensed ${results.length} results for "${query}"`);
+      return summary;
+    }
+  } catch (err) {
+    console.error("[SEARCH SUMMARY ERROR]", err);
+  }
+  // Fallback: return raw JSON if summarization fails
+  return JSON.stringify(results);
+}
+
 // ─── Server ───────────────────────────────────────────────────────────────────
 async function startServer() {
   const app = express();
@@ -402,7 +438,7 @@ ${memoryContext}`;
 
     try {
       session = await ai.live.connect({
-        model: "gemini-3.1-flash-live-preview",
+        model: MODEL_LIVE,
         callbacks: {
           onmessage: async (message: LiveServerMessage) => {
             // Forward all audio parts to client
@@ -440,7 +476,8 @@ ${memoryContext}`;
                   let resultStr = "";
                   try {
                     const results = await performWebSearch(query);
-                    resultStr = JSON.stringify(results);
+                    // Summarize results using lightweight model to save Live API tokens
+                    resultStr = await summarizeSearchResults(ai, query, results);
                     console.log(`[SEARCH OK] ${query}`);
                   } catch (error: any) {
                     resultStr = `ERROR: ${error.message}`;
