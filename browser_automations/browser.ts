@@ -118,3 +118,95 @@ export async function playYoutubeQuery(query: string): Promise<string> {
   
   return `YouTube query search succeeded. Auto-playing first video result for: "${query}"`;
 }
+
+export async function scrollPage(direction: "up" | "down", amount?: number): Promise<string> {
+  const { page } = await getBrowserAndPage();
+  const scrollAmount = amount || 500;
+  console.log(`[BROWSER] Scrolling ${direction} by ${scrollAmount}px`);
+  await page.evaluate((dir, amt) => {
+    window.scrollBy(0, dir === "down" ? amt : -amt);
+  }, direction, scrollAmount);
+  return `Scrolled page ${direction} by ${scrollAmount} pixels.`;
+}
+
+export async function extractPageText(selector?: string): Promise<string> {
+  const { page } = await getBrowserAndPage();
+  if (selector) {
+    console.log(`[BROWSER] Extracting text from selector: ${selector}`);
+    await page.waitForSelector(selector, { timeout: 5000 });
+    const text = await page.$eval(selector, el => el.textContent || "");
+    return `Text content of "${selector}":\n${text.trim()}`;
+  } else {
+    console.log(`[BROWSER] Extracting all visible page body text`);
+    const text = await page.$eval("body", el => el.innerText || "");
+    return `Visible Page Text Content:\n${text.substring(0, 5000).trim()}${text.length > 5000 ? "\n...[TRUNCATED]" : ""}`;
+  }
+}
+
+export async function extractPageLinks(): Promise<string> {
+  const { page } = await getBrowserAndPage();
+  console.log(`[BROWSER] Extracting all active hyperlinks on the page`);
+  const links = await page.evaluate(() => {
+    return Array.from(document.querySelectorAll("a"))
+      .map(a => ({
+        text: a.innerText?.trim() || "",
+        href: a.href || ""
+      }))
+      .filter(l => l.text.length > 0 && l.href.startsWith("http"));
+  });
+
+  const formatted = links.slice(0, 30).map((l, i) => `[${i + 1}] ${l.text} -> ${l.href}`).join("\n");
+  return `Top ${Math.min(30, links.length)} clickable page links:\n${formatted}`;
+}
+
+export async function evaluateJs(code: string): Promise<any> {
+  const { page } = await getBrowserAndPage();
+  console.log(`[BROWSER] Evaluating custom JS code in page context`);
+  const result = await page.evaluate((jsCode) => {
+    try {
+      return eval(jsCode);
+    } catch (e: any) {
+      return `ERROR: ${e.message}`;
+    }
+  }, code);
+  return typeof result === "object" ? JSON.stringify(result) : String(result);
+}
+
+export async function controlMedia(action: "play" | "pause" | "mute" | "unmute" | "skipAd"): Promise<string> {
+  const { page } = await getBrowserAndPage();
+  console.log(`[BROWSER-MEDIA] Performing media control: ${action}`);
+
+  const result = await page.evaluate((act) => {
+    const video = document.querySelector("video");
+    
+    if (act === "skipAd") {
+      const skipBtn = document.querySelector(".ytp-skip-ad-button, .ytp-ad-skip-button") as HTMLElement;
+      if (skipBtn) {
+        skipBtn.click();
+        return "Ad skip button clicked successfully.";
+      }
+      return "No active ad skip button found on screen.";
+    }
+
+    if (!video) return "No active video or audio media element found on page.";
+
+    switch (act) {
+      case "play":
+        video.play();
+        return "Resumed playback.";
+      case "pause":
+        video.pause();
+        return "Paused playback.";
+      case "mute":
+        video.muted = true;
+        return "Muted media audio.";
+      case "unmute":
+        video.muted = false;
+        return "Unmuted media audio.";
+      default:
+        return "Unknown media control action.";
+    }
+  }, action);
+
+  return result;
+}

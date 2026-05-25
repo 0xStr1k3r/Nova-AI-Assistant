@@ -20,7 +20,12 @@ import {
   typeText as bType,
   captureScreenshot as bScreenshot,
   playYoutubeQuery as bYoutubePlay,
-  closeBrowser as bClose
+  closeBrowser as bClose,
+  scrollPage as bScroll,
+  extractPageText as bExtractText,
+  extractPageLinks as bExtractLinks,
+  evaluateJs as bEvaluateJs,
+  controlMedia as bControlMedia
 } from "./browser_automations/browser";
 
 const execAsync = util.promisify(exec);
@@ -530,13 +535,13 @@ ${recentConversationsContext}`;
 
       functionDeclarations.push({
         name: "openBrowser",
-        description: "Opens the default web browser on the local Linux desktop and automates interactions (navigating, clicking buttons, typing text, scrolling, playing YouTube videos, capturing screenshots, or closing the browser). Use this whenever the user asks to open a site, navigate to a webpage, play music, click a button, fill a form field, or take a screenshot.",
+        description: "Opens the default web browser on the local Linux desktop and automates interactions (navigating, clicking buttons, typing text, scrolling, playing YouTube videos, capturing screenshots, extracting page data, or closing the browser). Use this whenever the user asks to open a site, navigate, click, fill forms, play music, skip ads, or get page text.",
         parameters: {
           type: Type.OBJECT,
           properties: {
             action: {
               type: Type.STRING,
-              enum: ["navigate", "click", "type", "screenshot", "close"],
+              enum: ["navigate", "click", "type", "screenshot", "close", "scroll", "extractText", "extractLinks", "evaluateJs", "controlMedia"],
               description: "The browser automation action to perform. Defaults to 'navigate' if url or youtubeSearchQuery is provided.",
             },
             url: {
@@ -549,11 +554,29 @@ ${recentConversationsContext}`;
             },
             selector: {
               type: Type.STRING,
-              description: "The CSS selector of the button, input, or element to click or type into. Required if action is 'click' or 'type'.",
+              description: "The CSS selector of the element to click, type into, or extract text from. Optional.",
             },
             text: {
               type: Type.STRING,
               description: "The text to type into a form field. Required if action is 'type'.",
+            },
+            scrollDirection: {
+              type: Type.STRING,
+              enum: ["up", "down"],
+              description: "The direction to scroll page. Required if action is 'scroll'.",
+            },
+            scrollAmount: {
+              type: Type.INTEGER,
+              description: "The amount of pixels to scroll. Optional.",
+            },
+            jsCode: {
+              type: Type.STRING,
+              description: "The custom JavaScript expression to evaluate inside page context. Required if action is 'evaluateJs'.",
+            },
+            mediaAction: {
+              type: Type.STRING,
+              enum: ["play", "pause", "mute", "unmute", "skipAd"],
+              description: "The media control action to perform. Required if action is 'controlMedia'.",
             },
           },
           required: [],
@@ -790,6 +813,10 @@ SUCCESS: ${code === 0}
                   const youtubeSearchQuery = (call.args as any).youtubeSearchQuery as string;
                   const selector = (call.args as any).selector as string;
                   const text = (call.args as any).text as string;
+                  const scrollDirection = (call.args as any).scrollDirection as "up" | "down";
+                  const scrollAmount = (call.args as any).scrollAmount as number;
+                  const jsCode = (call.args as any).jsCode as string;
+                  const mediaAction = (call.args as any).mediaAction as "play" | "pause" | "mute" | "unmute" | "skipAd";
                   
                   logTurn("BROWSER", `Automating browser: Action=${action}, URL=${url || "none"}, Query=${youtubeSearchQuery || "none"}`);
 
@@ -815,6 +842,19 @@ SUCCESS: ${code === 0}
                     } else if (action === "close") {
                       await bClose();
                       resultStr = "Closed the browser successfully.";
+                    } else if (action === "scroll") {
+                      if (!scrollDirection) throw new Error("Scroll direction ('up' or 'down') is required.");
+                      resultStr = await bScroll(scrollDirection, scrollAmount);
+                    } else if (action === "extractText") {
+                      resultStr = await bExtractText(selector);
+                    } else if (action === "extractLinks") {
+                      resultStr = await bExtractLinks();
+                    } else if (action === "evaluateJs") {
+                      if (!jsCode) throw new Error("JavaScript code expression is required to evaluate.");
+                      resultStr = await bEvaluateJs(jsCode);
+                    } else if (action === "controlMedia") {
+                      if (!mediaAction) throw new Error("Media action ('play', 'pause', 'mute', 'unmute', 'skipAd') is required.");
+                      resultStr = await bControlMedia(mediaAction);
                     } else {
                       throw new Error(`Unsupported browser action: "${action}" or missing parameters.`);
                     }
