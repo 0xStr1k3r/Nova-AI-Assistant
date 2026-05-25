@@ -357,7 +357,7 @@ export default function SettingsModal({
                     onChange={e => setLocal({ ...local, userName: e.target.value })}
                     className="w-full px-3.5 py-2.5 rounded-xl text-sm text-white focus:outline-none transition-all font-medium"
                     style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.09)" }}
-                    placeholder="Chiru"
+                    placeholder="John"
                     onFocus={e => (e.currentTarget.style.border = "1px solid rgba(139,92,246,0.5)")}
                     onBlur={e => (e.currentTarget.style.border = "1px solid rgba(255,255,255,0.09)")}
                   />
@@ -502,7 +502,7 @@ export default function SettingsModal({
                             type="text"
                             value={newVoiceName}
                             onChange={e => setNewVoiceName(e.target.value)}
-                            placeholder="Speaker's name (e.g. Chiru)"
+                            placeholder="Speaker's name (e.g. John)"
                             disabled={recordingVoice}
                             className="flex-1 px-3.5 py-2 rounded-xl text-xs text-white focus:outline-none transition-all"
                             style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.09)" }}
@@ -938,7 +938,7 @@ export default function SettingsModal({
                       }}
                       className="w-full px-3.5 py-2 rounded-xl text-xs text-white focus:outline-none transition-all font-mono"
                       style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.09)" }}
-                      placeholder="/home/chiru/Documents/ObsidianVault"
+                      placeholder="/home/username/Documents/ObsidianVault"
                       onFocus={e => (e.currentTarget.style.border = "1px solid rgba(139,92,246,0.5)")}
                       onBlur={e => (e.currentTarget.style.border = "1px solid rgba(255,255,255,0.09)")}
                     />

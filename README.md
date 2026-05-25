@@ -109,7 +109,7 @@ Nova supports integration with your local **Obsidian Notes Vault**. Since Obsidi
 1. Click the **Gear icon** in the UI to open the Settings panel.
 2. Navigate to the **Integrations** tab.
 3. Toggle the **Obsidian Notes Vault** integration to **ON**.
-4. Enter the absolute path to your Obsidian vault directory (e.g. `/home/chiru/Documents/ObsidianVault`).
+4. Enter the absolute path to your Obsidian vault directory (e.g. `/home/username/Documents/ObsidianVault`).
 5. Click **Save**.
 
 ### How to Use

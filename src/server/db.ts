@@ -152,7 +152,7 @@ export const DEFAULT_MODES: Mode[] = [
 
 const defaultConfig: NovaConfig = {
   wakeWord: process.env.WAKE_WORD || "nova",
-  userName: process.env.USER_NAME || "Chiru",
+  userName: process.env.USER_NAME || os.userInfo().username || "User",
   activeModeId: "assistant",
   modes: DEFAULT_MODES,
   memory: [],
