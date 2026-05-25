@@ -42,10 +42,10 @@ export default function SystemStats({
     },
     {
       label: "Voice Gating",
-      value: isGated ? `${voiceProfileCount} Verified` : `${voiceProfileCount} Profiles (Open)`,
+      value: "Open (All Voices)",
       icon: ShieldAlert,
-      colorClass: isGated ? "text-rose-400" : "text-slate-400",
-      bgClass: isGated ? "bg-rose-500/5" : "bg-slate-500/5",
+      colorClass: "text-slate-400",
+      bgClass: "bg-slate-500/5",
     },
   ];
 
