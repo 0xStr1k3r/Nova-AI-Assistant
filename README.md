@@ -11,26 +11,30 @@ Nova is a high-tech personal AI voice assistant powered by the **Gemini Live API
 - 🧠 **Persistent Memory**: A token-efficient fact extraction system that identifies your preferences and habits, storing them dynamically across sessions.
 - 🎭 **8 Operating Modes**: Select custom restriction levels (Assistant, Focus, Deep Dive, Sysadmin, Dev, Unrestricted, Creative, Tutor) in the settings.
 - 🌐 **Browser-Native Pipeline**: Voice pipeline and wake word detection run entirely in-browser using standard HTML5 Speech APIs. Access via any web browser at `http://localhost:22222`.
+- 🌐 **Advanced Browser Automation Suite (`openBrowser`)**: A fully modular, ultra-lightweight Puppeteer-Core engine that hooks natively into your **existing system Chromium** (`/usr/bin/chromium`) for zero-overhead browser control (clicking, typing, scrolling, multi-tab switching, cookie administration, PDF generation, visual screenshot description analysis via Gemini 2.0 Flash, pagination clicking, and browser/system master sound adjustments).
 
 ## Prerequisites
 
-Before running the setup, ensure you have **Node.js** (v18+) and **Go** (for the optional GoDo integration) installed. Use the command matching your Linux distribution:
+Before running the setup, ensure you have **Node.js** (v18+), **Go** (for the optional GoDo integration), and **Chromium** (for browser automation) installed. Use the command matching your Linux distribution:
 
 ### Debian / Ubuntu Family
 ```bash
 sudo apt update
-sudo apt install -y nodejs npm golang
+sudo apt install -y nodejs npm golang chromium
 ```
 
 ### Arch Linux Family
 ```bash
-sudo pacman -Syu nodejs npm go
+sudo pacman -Syu nodejs npm go chromium
 ```
 
 ### Red Hat / Fedora Family
 ```bash
-sudo dnf install -y nodejs npm golang
+sudo dnf install -y nodejs npm golang chromium
 ```
+
+> [!NOTE]
+> **Manual Installation Fallback**: If the automatic installer fails to set up some of these dependencies, please install Node, npm, and especially **chromium** manually using your distribution's standard package manager (e.g. `sudo pacman -S chromium` or `sudo apt install chromium`).
 
 ---
 
@@ -116,6 +120,27 @@ When the integration is enabled, Nova will be aware of your vault directory. If 
 * **"Search my vault for ideas about artificial intelligence"** -> Uses `grep` or search tools inside your vault path to find matches.
 * **"Create a new note named Shopping List and add buy bread"** -> Creates a Markdown file with specified content in your vault.
 * **"Read my note about project specs"** -> Locates and prints the contents of the note.
+
+---
+
+## Advanced Browser Automation Suite (openBrowser)
+
+Nova is equipped with a fully decoupled, highly modular **Browser Automation Engine** inside `browser_automations/` powered by `puppeteer-core`. Instead of downloading heavy, resource-intensive third-party browsers (which take 500MB+ in size), it hooks natively into your **existing system Chromium browser** (`/usr/bin/chromium`), ensuring a virtually non-existent CPU and storage footprint.
+
+### Browser Actions & Voice Commands
+
+When Nova is in a mode that permits system command execution, you can command browser tasks hands-free using natural language:
+
+* **Multimodal Visual Analysis (`"analyze"`)**
+  * *"Nova, look at my screen and tell me what you see"* -> Captures a high-definition viewport screenshot, passes it directly to `gemini-2.0-flash` on the backend, and describes or answers visual questions about the active webpage layout.
+* **Autoplay Music & Video (`"youtubePlay"`)**
+  * *"Play Shape of You by Ed Sheeran"* -> Opens YouTube, searches your query, clicks the first result, and starts playing music automatically with ad-skip systems active.
+* **Tab & Browser Sound Control (`"controlMedia"` & `"systemVolume"`)**
+  * *"Mute the browser"*, *"Pause playback"*, *"Unmute system audio"*, *"Set system volume to 80%"* -> Seamlessly adjusts browser element volume levels or host desktop Master audio volume using system `wpctl` bindings.
+* **Progressive Navigation & Pagination (`"click"`, `"type"`, `"clickNext"`)**
+  * *"Type hello into the search bar"*, *"Click the login button"*, *"Go to the next page"* -> Programmatically scrolls, fills forms, clicks links, and intelligently locates and clicks pagination next buttons/arrows (`→`, `>`, `Next`).
+* **Session & Layout Extraction (`"details"`, `"pdf"`, `"cookies"`, `"html"`)**
+  * *"Print this page as a PDF"*, *"Show me active session cookies"*, *"Extract page source code"* -> Automatically saves page PDFs, extracts tab metadata, displays cookie tokens, or harvests raw DOM code.
 
 ---
 

@@ -91,7 +91,7 @@ install_system_dependencies() {
     case "$DISTRO_ID" in
         ubuntu|debian)
             install_cmd="sudo apt-get update && sudo apt-get install -y"
-            pkgs=(build-essential pkg-config git curl)
+            pkgs=(build-essential pkg-config git curl chromium)
             
             if ! command -v node &> /dev/null; then
                 pkgs+=(nodejs npm)
@@ -100,7 +100,7 @@ install_system_dependencies() {
             
         fedora)
             install_cmd="sudo dnf install -y"
-            pkgs=(gcc gcc-c++ make pkgconfig git curl)
+            pkgs=(gcc gcc-c++ make pkgconfig git curl chromium)
             
             if ! command -v node &> /dev/null; then
                 pkgs+=(nodejs npm)
@@ -109,7 +109,7 @@ install_system_dependencies() {
             
         arch)
             install_cmd="sudo pacman -S --noconfirm --needed"
-            pkgs=(base-devel pkgconf git curl)
+            pkgs=(base-devel pkgconf git curl chromium)
             
             if ! command -v node &> /dev/null; then
                 pkgs+=(nodejs npm)
@@ -118,7 +118,7 @@ install_system_dependencies() {
             
         rhel)
             install_cmd="sudo dnf install -y"
-            pkgs=(gcc gcc-c++ make pkgconfig git curl)
+            pkgs=(gcc gcc-c++ make pkgconfig git curl chromium)
             
             if ! command -v node &> /dev/null; then
                 pkgs+=(nodejs npm)
@@ -129,19 +129,19 @@ install_system_dependencies() {
             # Check distro-like fallback
             if [[ "$DISTRO_LIKE" =~ "debian" ]] || [[ "$DISTRO_LIKE" =~ "ubuntu" ]]; then
                 install_cmd="sudo apt-get update && sudo apt-get install -y"
-                pkgs=(build-essential pkg-config git curl)
+                pkgs=(build-essential pkg-config git curl chromium)
                 if ! command -v node &> /dev/null; then pkgs+=(nodejs npm); fi
             elif [[ "$DISTRO_LIKE" =~ "fedora" ]] || [[ "$DISTRO_LIKE" =~ "rhel" ]]; then
                 install_cmd="sudo dnf install -y"
-                pkgs=(gcc gcc-c++ make pkgconfig git curl)
+                pkgs=(gcc gcc-c++ make pkgconfig git curl chromium)
                 if ! command -v node &> /dev/null; then pkgs+=(nodejs npm); fi
             elif [[ "$DISTRO_LIKE" =~ "arch" ]]; then
                 install_cmd="sudo pacman -S --noconfirm --needed"
-                pkgs=(base-devel pkgconf git curl)
+                pkgs=(base-devel pkgconf git curl chromium)
                 if ! command -v node &> /dev/null; then pkgs+=(nodejs npm); fi
             else
                 print_warning "Unable to auto-detect a supported package manager for distribution: $DISTRO_ID"
-                print_warning "Please manually install build tools, pkg-config, git, and curl."
+                print_warning "Please manually install build tools, pkg-config, git, curl, and chromium."
                 return
             fi
             ;;
@@ -154,6 +154,7 @@ install_system_dependencies() {
         else
             print_error "Failed to install some system packages. You might need to install them manually."
             print_warning "Required packages: ${pkgs[*]}"
+            print_warning "If the automatic installation failed, please install them manually using your standard package manager (e.g. pacman, apt, dnf)."
         fi
     fi
 }
