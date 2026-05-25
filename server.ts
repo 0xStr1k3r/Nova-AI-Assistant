@@ -17,6 +17,13 @@ import {
 
 const execAsync = util.promisify(exec);
 
+// Background agent execution state
+let activeAgentProcess: any = null;
+let activeAgentName = "";
+let activeAgentPrompt = "";
+let activeAgentStartTime = 0;
+const STATUS_LOG_PATH = "/home/chiru/.config/nova-voice-assistant/coding_agent_status.log";
+
 // ─── Model Constants (optimized for free-tier rate limits) ────────────────────
 // Live API voice session: Only model supporting bidirectional audio streaming
 const MODEL_LIVE    = "gemini-3.1-flash-live-preview";
@@ -501,6 +508,16 @@ ${recentConversationsContext}`;
           required: ["agent", "prompt"],
         },
       });
+
+      functionDeclarations.push({
+        name: "getCodingAgentStatus",
+        description: "Checks the running status and recent progress of the background coding agent. Returns whether an agent is active, which agent is running, and the last 15 lines of its terminal logs/status output. Call this to monitor progress or when the user asks for status updates.",
+        parameters: {
+          type: Type.OBJECT,
+          properties: {},
+          required: [],
+        },
+      });
     }
 
     try {
@@ -600,59 +617,131 @@ ${recentConversationsContext}`;
                   const agent = (call.args as any).agent as string;
                   const prompt = (call.args as any).prompt as string;
                   
-                  logTurn("AGENT", `Running ${agent}: ${prompt}`);
-                  
-                  // Notify client that coding agent is starting
-                  clientWs.send(JSON.stringify({
-                    action: "agent_start",
-                    agent,
-                    prompt
-                  }));
+                  logTurn("AGENT", `Requested ${agent}: ${prompt}`);
 
-                  let command = "";
-                  if (agent === "opencode") {
-                    command = `opencode run --dangerously-skip-permissions ${JSON.stringify(prompt)}`;
-                  } else if (agent === "claude") {
-                    command = `export PAGER=cat && claude --non-interactive -p ${JSON.stringify(prompt)}`;
-                  } else if (agent === "copilot") {
-                    command = `export PAGER=cat && copilot explain ${JSON.stringify(prompt)}`;
+                  // Check if another coding agent is already running
+                  let isAlreadyRunning = false;
+                  if (activeAgentProcess && activeAgentProcess.exitCode === null) {
+                    isAlreadyRunning = true;
                   }
 
-                  let resultStr = "";
-                  let success = true;
-                  let errorMsg = "";
-                  try {
-                    // Allow up to 180 seconds for coding agents to complete complex code generation/tests
-                    const { stdout, stderr } = await execAsync(command, {
-                      timeout: 180000,
+                  if (isAlreadyRunning) {
+                    const errorMsg = `⚠️ Spawning blocked: An active developer coding agent (${activeAgentName}) is currently running in the background. Wait for the current agent task to complete or query getCodingAgentStatus.`;
+                    console.log(`[AGENT BLOCKED] Spawning ${agent} blocked by active running ${activeAgentName}`);
+                    
+                    toolResponses.push({
+                      id: call.id,
+                      name: call.name,
+                      response: {
+                        status: "error",
+                        result: errorMsg
+                      },
+                    });
+                  } else {
+                    // Start the new agent in the background
+                    // Notify client that coding agent is starting
+                    clientWs.send(JSON.stringify({
+                      action: "agent_start",
+                      agent,
+                      prompt
+                    }));
+
+                    let command = "";
+                    if (agent === "opencode") {
+                      command = `opencode run --dangerously-skip-permissions ${JSON.stringify(prompt)}`;
+                    } else if (agent === "claude") {
+                      command = `export PAGER=cat && claude --non-interactive -p ${JSON.stringify(prompt)}`;
+                    } else if (agent === "copilot") {
+                      command = `export PAGER=cat && copilot explain ${JSON.stringify(prompt)}`;
+                    }
+
+                    // Write Start Header to status file
+                    const startHeader = `================================================
+CODING AGENT START: ${agent.toUpperCase()}
+TIME: ${new Date().toISOString()}
+PROMPT: ${prompt}
+================================================\n\n`;
+                    try {
+                      fs.writeFileSync(STATUS_LOG_PATH, startHeader, "utf-8");
+                    } catch (e: any) {
+                      console.error(`Failed to write status header: ${e.message}`);
+                    }
+
+                    // Execute command in the background, redirecting stdout/stderr directly to file!
+                    const bgCommand = `${command} >> ${STATUS_LOG_PATH} 2>&1`;
+                    console.log(`[AGENT SPAWN] Spawning ${agent} in the background: ${bgCommand}`);
+                    
+                    activeAgentProcess = exec(bgCommand, {
                       maxBuffer: 10 * 1024 * 1024, // 10MB buffer
                     });
-                    resultStr = `STDOUT:\n${stdout}\nSTDERR:\n${stderr}`.trim();
-                    console.log(`[AGENT OK] ${agent} completed successfully`);
-                  } catch (error: any) {
-                    success = false;
-                    errorMsg = error.message;
-                    resultStr = `ERROR: ${error.message}\n${error.stderr ?? ""}`.trim();
-                    console.error(`[AGENT FAIL] ${agent}`, error.message);
+                    activeAgentName = agent;
+                    activeAgentPrompt = prompt;
+                    activeAgentStartTime = Date.now();
+
+                    // Non-blocking exit handler
+                    activeAgentProcess.on("exit", (code: number) => {
+                      const exitMsg = `\n\n================================================
+CODING AGENT FINISHED
+TIME: ${new Date().toISOString()}
+EXIT CODE: ${code}
+SUCCESS: ${code === 0}
+================================================\n`;
+                      try {
+                        fs.appendFileSync(STATUS_LOG_PATH, exitMsg, "utf-8");
+                      } catch (e: any) {
+                        console.error(`Failed to append status footer: ${e.message}`);
+                      }
+
+                      // Also notify WebSocket client!
+                      clientWs.send(JSON.stringify({
+                        action: "agent_end",
+                        agent,
+                        success: code === 0,
+                      }));
+                      console.log(`[AGENT EXIT] Background coding agent ${agent} finished with code ${code}`);
+                    });
+
+                    const spawnResult = `🤖 Successfully spawned the ${agent.toUpperCase()} coding agent in the background to handle the task. All logs and progress are being written to ${STATUS_LOG_PATH}. You can check its progress using the getCodingAgentStatus tool at any time (recommend checking every minute). Do not block; you can reply to the user normally now and tell them the agent is running in the background.`;
+
+                    toolResponses.push({
+                      id: call.id,
+                      name: call.name,
+                      response: {
+                        status: "success",
+                        result: spawnResult
+                      },
+                    });
+                  }
+                } else if (call.name === "getCodingAgentStatus") {
+                  logTurn("AGENT_STATUS", "Checking background agent status");
+                  
+                  let isRunning = false;
+                  if (activeAgentProcess && activeAgentProcess.exitCode === null) {
+                    isRunning = true;
                   }
 
-                  // Notify client that coding agent has finished
-                  clientWs.send(JSON.stringify({
-                    action: "agent_end",
-                    agent,
-                    success,
-                    error: errorMsg
-                  }));
-
-                  // Truncate to a higher limit (15000 chars) for coding agents so we preserve full context
-                  if (resultStr.length > 15000) {
-                    resultStr = resultStr.substring(0, 15000) + "\n...[TRUNCATED IN ASSISTANT LOGS]";
+                  let recentLogs = "No active logs found.";
+                  if (fs.existsSync(STATUS_LOG_PATH)) {
+                    try {
+                      const fullContent = fs.readFileSync(STATUS_LOG_PATH, "utf-8");
+                      const lines = fullContent.split("\n");
+                      // Return the last 20 lines of logs
+                      recentLogs = lines.slice(-20).join("\n");
+                    } catch (e: any) {
+                      recentLogs = `Error reading status file: ${e.message}`;
+                    }
                   }
 
                   toolResponses.push({
                     id: call.id,
                     name: call.name,
-                    response: { result: resultStr },
+                    response: {
+                      isRunning,
+                      agent: activeAgentName || "none",
+                      prompt: activeAgentPrompt || "none",
+                      durationSeconds: activeAgentStartTime ? Math.round((Date.now() - activeAgentStartTime) / 1000) : 0,
+                      recentLogs: recentLogs,
+                    },
                   });
                 } else if (call.name === "delegateComplexTask") {
                   const taskPrompt = (call.args as any).taskPrompt as string;
