@@ -8,7 +8,7 @@ import { motion } from "motion/react";
 import { pcmToBase64 } from "./utils/audio";
 import { AudioStreamer } from "./utils/AudioStreamer";
 import SettingsModal from "./components/SettingsModal";
-import { SpeakerVerifier, calculateRMS } from "./utils/voiceProfile";
+import { verifier, initVoiceModel, calculateRMS } from "./utils/voiceProfile";
 
 // Modular Sub-components
 import Header from "./components/Header";
@@ -45,9 +45,11 @@ export default function App() {
   const standbyStreamRef = useRef<MediaStream | null>(null);
   const standbyProcessorRef = useRef<ScriptProcessorNode | null>(null);
   const lastUserVoiceTimeRef = useRef<number>(0);
-  // Sliding-window speaker verifiers — reused across frames for smoothed matching
-  const standbyVerifierRef = useRef<SpeakerVerifier>(new SpeakerVerifier(10));
-  const activeVerifierRef  = useRef<SpeakerVerifier>(new SpeakerVerifier(10));
+  // Rolling buffer for 4 seconds of audio (16000 sample rate * 4)
+  const STANDBY_BUFFER_SIZE = 64000;
+  const standbyAudioBufferRef = useRef<Float32Array>(new Float32Array(STANDBY_BUFFER_SIZE));
+  const standbyBufferIdxRef = useRef<number>(0);
+  const verifyingVoiceRef = useRef<boolean>(false);
 
   const isConnected = status === "active";
   const isConnecting = status === "connecting";
@@ -129,44 +131,33 @@ export default function App() {
   const startStandbyAudioAnalysis = async () => {
     try {
       if (standbyAudioCtxRef.current) return;
+      await initVoiceModel(); // Ensure model is loaded in standby
+      
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       standbyStreamRef.current = stream;
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       standbyAudioCtxRef.current = audioCtx;
       const source = audioCtx.createMediaStreamSource(stream);
 
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 2048;               // ↑ higher resolution: 1024 bins across 0–8 kHz
-      analyser.smoothingTimeConstant = 0.15;  // ↓ less smoothing so fast speech transients show up
-
       const processor = audioCtx.createScriptProcessor(2048, 1, 1);
       standbyProcessorRef.current = processor;
 
-      source.connect(analyser);
-      analyser.connect(processor);
+      source.connect(processor);
 
       const gainNode = audioCtx.createGain();
       gainNode.gain.value = 0; // Muted — no loopback
       processor.connect(gainNode);
       gainNode.connect(audioCtx.destination);
 
-      // Reset the verifier when standby starts
-      standbyVerifierRef.current.reset();
+      standbyBufferIdxRef.current = 0;
+      standbyAudioBufferRef.current.fill(0);
 
       processor.onaudioprocess = (e) => {
         const buffer = e.inputBuffer.getChannelData(0);
-        const rms = calculateRMS(buffer);
-        const profiles = configRef.current?.userVoiceProfiles;
-
-        // Only analyse when there's audible signal (very low floor: 0.005)
-        if (profiles && profiles.length > 0 && rms > 0.005) {
-          const fftData = new Float32Array(analyser.frequencyBinCount);
-          analyser.getFloatFrequencyData(fftData);
-          // Feed frame to sliding-window verifier
-          const isUser = standbyVerifierRef.current.addFrame(fftData, 16000, profiles);
-          if (isUser) {
-            lastUserVoiceTimeRef.current = Date.now();
-          }
+        // Push to circular buffer
+        for (let i = 0; i < buffer.length; i++) {
+          standbyAudioBufferRef.current[standbyBufferIdxRef.current] = buffer[i];
+          standbyBufferIdxRef.current = (standbyBufferIdxRef.current + 1) % STANDBY_BUFFER_SIZE;
         }
       };
     } catch (err) {
@@ -208,7 +199,7 @@ export default function App() {
     recognition.interimResults = true;
     recognition.lang = "en-US";
 
-    recognition.onresult = (event: any) => {
+    recognition.onresult = async (event: any) => {
       let transcript = "";
       for (let i = event.resultIndex; i < event.results.length; i++) {
         transcript += event.results[i][0].transcript;
@@ -218,14 +209,46 @@ export default function App() {
       const wakeWord = configRef.current?.wakeWord?.toLowerCase() || "nova";
       if (transcript.includes(wakeWord)) {
         const currentStatus = statusRef.current;
-        if (currentStatus !== "active" && currentStatus !== "connecting") {
+        if (currentStatus !== "active" && currentStatus !== "connecting" && !verifyingVoiceRef.current) {
+          
           if (configRef.current?.voiceResponseMode === "user" && configRef.current?.userVoiceProfiles && configRef.current.userVoiceProfiles.length > 0) {
-            const timeSinceUserSpoke = Date.now() - lastUserVoiceTimeRef.current;
-            if (timeSinceUserSpoke > 4000) {
-              addLog(`Wake word heard, but speaker voice did not match profile.`, "info");
+            verifyingVoiceRef.current = true;
+            addLog("Verifying speaker identity with AI model...", "info");
+            
+            // Linearize circular buffer
+            const linearBuffer = new Float32Array(STANDBY_BUFFER_SIZE);
+            const idx = standbyBufferIdxRef.current;
+            linearBuffer.set(standbyAudioBufferRef.current.subarray(idx));
+            linearBuffer.set(standbyAudioBufferRef.current.subarray(0, idx), STANDBY_BUFFER_SIZE - idx);
+            
+            try {
+              // Extract embedding from the last 4 seconds
+              const res = await verifier.getEmbedding(linearBuffer);
+              const currentEmbedding = res.embedding;
+              
+              let matched = false;
+              for (const profile of configRef.current.userVoiceProfiles) {
+                if (!profile.embedding || profile.embedding.length === 0) continue;
+                const sim = verifier.compareEmbeddings(currentEmbedding, new Float32Array(profile.embedding));
+                // Similarity threshold of 0.65 is usually strict enough for NeXt-TDNN
+                if (sim >= 0.65) {
+                  matched = true;
+                  break;
+                }
+              }
+              
+              verifyingVoiceRef.current = false;
+              if (!matched) {
+                addLog(`Wake word heard, but speaker voice did not match profile.`, "info");
+                return;
+              }
+            } catch (err) {
+              verifyingVoiceRef.current = false;
+              console.error("Voice verification failed", err);
               return;
             }
           }
+          
           addLog(`Wake word "${wakeWord}" detected — activating Nova`, "wake");
           stopWakeWordListening();
           connect();
@@ -285,7 +308,8 @@ export default function App() {
       setStatus("connecting");
       addLog("Initializing voice pipeline...", "info");
       // Reset the sliding window verifier for the new session
-      activeVerifierRef.current.reset();
+      standbyBufferIdxRef.current = 0;
+      standbyAudioBufferRef.current.fill(0);
       lastUserVoiceTimeRef.current = Date.now(); // Give the user a grace period at session start
 
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
@@ -323,20 +347,8 @@ export default function App() {
         let shouldSend = true;
 
         if (configRef.current?.voiceResponseMode === "user" && configRef.current?.userVoiceProfiles && configRef.current.userVoiceProfiles.length > 0) {
-          const profiles = configRef.current.userVoiceProfiles;
-          // Analyse every frame with signal above the noise floor
-          if (rms > 0.005) {
-            const fftData = new Float32Array(analyser.frequencyBinCount);
-            analyser.getFloatFrequencyData(fftData);
-            const isUser = activeVerifierRef.current.addFrame(fftData, 16000, profiles);
-            if (isUser) {
-              lastUserVoiceTimeRef.current = Date.now();
-            }
-          }
-          // Gate: mute outgoing audio only when no verified user speech in 2500 ms
-          if (Date.now() - lastUserVoiceTimeRef.current > 2500) {
-            shouldSend = false;
-          }
+          // If we want to check user voice during active conversation, we could run a background check here
+          // But with continuous Live API, we can just let it run. It's more efficient to just gate the wake word.
         }
  
         if (ws.readyState === WebSocket.OPEN) {

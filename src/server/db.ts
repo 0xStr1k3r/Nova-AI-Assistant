@@ -27,9 +27,9 @@ export interface MemoryEntry {
 
 export interface VoiceProfile {
   name: string;
-  spectrum: number[];
-  rmsThreshold: number;
-  sampleRate: number;
+  embedding: number[];
+  rmsThreshold?: number;
+  sampleRate?: number;
 }
 
 export interface IntegrationsConfig {
@@ -192,12 +192,12 @@ export function getDb(): NovaConfig {
           merged.userVoiceProfiles = [];
         }
         const profile = merged.userVoiceProfile;
-        if (profile && profile.spectrum && Array.isArray(profile.spectrum)) {
+        if (profile && profile.embedding && Array.isArray(profile.embedding)) {
           const exists = merged.userVoiceProfiles.some(p => p.name === "Primary User");
           if (!exists) {
             merged.userVoiceProfiles.push({
               name: "Primary User",
-              spectrum: profile.spectrum,
+              embedding: profile.embedding,
               rmsThreshold: profile.rmsThreshold ?? 0.015,
               sampleRate: profile.sampleRate ?? 16000,
             });
@@ -210,17 +210,17 @@ export function getDb(): NovaConfig {
         merged.userVoiceProfiles = [];
       }
 
-      // ── Purge profiles built with the old raw-FFT algorithm ─────────────────
-      // The new Bark-scale algorithm produces exactly 23 bands (BARK_EDGES_HZ has 24 edges).
-      // Any profile with a different spectrum length is incompatible and must be removed.
-      const EXPECTED_BARK_BANDS = 23;
+      // ── Purge profiles built with the old Bark-scale algorithm ─────────────────
+      // The new ONNX mobile-128 algorithm produces exactly 128 embedding dimensions.
+      // Any profile with a different embedding length is incompatible and must be removed.
+      const EXPECTED_DIMS = 128;
       const before = merged.userVoiceProfiles.length;
       merged.userVoiceProfiles = merged.userVoiceProfiles.filter(
-        (p: any) => Array.isArray(p.spectrum) && p.spectrum.length === EXPECTED_BARK_BANDS
+        (p: any) => Array.isArray(p.embedding) && p.embedding.length === EXPECTED_DIMS
       );
       if (merged.userVoiceProfiles.length < before) {
         console.warn(
-          `[Nova DB] Purged ${before - merged.userVoiceProfiles.length} voice profile(s) with incompatible spectrum format (expected ${EXPECTED_BARK_BANDS} bands).`
+          `[Nova DB] Purged ${before - merged.userVoiceProfiles.length} voice profile(s) with incompatible format (expected ${EXPECTED_DIMS} dims).`
         );
       }
 

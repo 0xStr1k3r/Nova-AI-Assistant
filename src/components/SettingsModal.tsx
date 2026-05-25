@@ -4,7 +4,7 @@ import {
   Volume2, ShieldCheck, ShieldOff, Check, Fingerprint,
   Wand2, ChevronRight, AlertCircle, Wifi, WifiOff, Link2,
 } from "lucide-react";
-import { getVoiceSpectrum, calculateRMS, VoiceProfile } from "../utils/voiceProfile";
+import { verifier, initVoiceModel, VoiceProfile } from "../utils/voiceProfile";
 
 export interface Mode {
   id: string;
@@ -82,8 +82,7 @@ export default function SettingsModal({
   const [enrollStep, setEnrollStep]     = useState<number>(0);
   const [recordingProgress, setRecordingProgress] = useState(0);
   // useRef avoids stale-closure bug when step 2 reads step 1's frames
-  const accumulatedFramesRef = useRef<number[][]>([]);
-  const accumulatedRmsRef    = useRef<number[]>([]);
+  const accumulatedFramesRef            = useRef<number[][]>([]);
   const progressIntervalRef  = useRef<any>(null);
 
   useEffect(() => {
@@ -92,7 +91,7 @@ export default function SettingsModal({
 
   if (!isOpen || !local) return null;
 
-  // ── Voice Enrollment ───────────────────────────────────────────────────────
+  // ── Advanced Voice Enrollment (ONNX-based) ───────────────────────────────
   const recordVoiceStep = async (step: number) => {
     if (!newVoiceName.trim()) {
       setRecordingStatus("⚠ Please enter a name for this voice profile first.");
@@ -113,24 +112,18 @@ export default function SettingsModal({
       setRecordingVoice(true);
       setRecordingProgress(0);
       setRecordingStatus(`Preparing mic for phrase ${step}…`);
+      
+      await initVoiceModel();
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-      const source   = audioCtx.createMediaStreamSource(stream);
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize               = 2048;
-      analyser.smoothingTimeConstant = 0.15;
-      const processor = audioCtx.createScriptProcessor(2048, 1, 1);
-      source.connect(analyser);
-      analyser.connect(processor);
-      const gainNode = audioCtx.createGain();
-      gainNode.gain.value = 0;
-      processor.connect(gainNode);
-      gainNode.connect(audioCtx.destination);
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      const audioChunks: Blob[] = [];
 
-      const stepFrames: number[][] = [];
-      const stepRms:    number[]   = [];
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunks.push(e.data);
+      };
+
       const RECORD_MS = 4000;
-
       setRecordingStatus(`🎙 Recording phrase ${step}/3 — speak clearly for 4 seconds`);
 
       // Progress bar ticker
@@ -140,73 +133,61 @@ export default function SettingsModal({
         setRecordingProgress(Math.min(100, (elapsed / RECORD_MS) * 100));
       }, 50);
 
-      processor.onaudioprocess = (e) => {
-        const buf = e.inputBuffer.getChannelData(0);
-        const rms = calculateRMS(buf);
-        stepRms.push(rms);
-        if (rms > 0.007) {
-          const fftData = new Float32Array(analyser.frequencyBinCount);
-          analyser.getFloatFrequencyData(fftData);
-          stepFrames.push(getVoiceSpectrum(fftData, 16000));
-        }
-      };
+      mediaRecorder.start(100);
 
       await new Promise(resolve => setTimeout(resolve, RECORD_MS));
+      
+      mediaRecorder.stop();
       clearInterval(progressIntervalRef.current);
       setRecordingProgress(100);
 
-      processor.disconnect(); source.disconnect();
-      analyser.disconnect();  gainNode.disconnect();
+      // Wait for data to flush
+      await new Promise(resolve => setTimeout(resolve, 100));
       stream.getTracks().forEach(t => t.stop());
-      audioCtx.close();
 
-      if (stepFrames.length < 5) {
-        setRecordingStatus("⚠ No clear voice detected. Please speak louder and retry.");
-        setRecordingVoice(false);
-        setRecordingProgress(0);
-        return;
-      }
+      const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+      setRecordingStatus(`⚙ Extracting deep learning voice footprint…`);
 
-      // Accumulate (via ref — always current, no stale React state)
-      accumulatedFramesRef.current = [...accumulatedFramesRef.current, ...stepFrames];
-      accumulatedRmsRef.current    = [...accumulatedRmsRef.current,    ...stepRms];
+      // Extract embedding
+      const result = await verifier.getEmbedding(audioBlob);
+      const embedding = Array.from(result.embedding);
+
+      accumulatedFramesRef.current = [...accumulatedFramesRef.current, embedding];
 
       if (step < 3) {
         setEnrollStep(step + 1);
-        setRecordingStatus(`✔ Phrase ${step} captured (${stepFrames.length} frames). Ready for phrase ${step + 1}.`);
+        setRecordingStatus(`✔ Phrase ${step} embedded successfully. Ready for phrase ${step + 1}.`);
         setRecordingVoice(false);
         setRecordingProgress(0);
       } else {
-        setRecordingStatus("⚙ Finalising voice footprint…");
+        setRecordingStatus("⚙ Finalising master voiceprint…");
 
-        const allFrames = accumulatedFramesRef.current;
-        const allRms    = accumulatedRmsRef.current;
-        const numFrames = allFrames.length;
-        const numBins   = allFrames[0].length;
+        const allEmbeddings = accumulatedFramesRef.current;
+        const numEmbeddings = allEmbeddings.length;
+        const numDims = allEmbeddings[0].length;
 
-        // Weighted average — louder frames carry more weight
-        const weighted = new Array(numBins).fill(0);
-        let totalW = 0;
-        for (let j = 0; j < numFrames; j++) {
-          const w = allRms[j] || 0.001;
-          totalW += w;
-          for (let i = 0; i < numBins; i++) weighted[i] += allFrames[j][i] * w;
+        // Average the embeddings for a robust master profile
+        const averaged = new Array(numDims).fill(0);
+        for (let j = 0; j < numEmbeddings; j++) {
+          for (let i = 0; i < numDims; i++) {
+            averaged[i] += allEmbeddings[j][i];
+          }
         }
-        for (let i = 0; i < numBins; i++) weighted[i] /= totalW;
-
+        
         // Re-normalise to unit length
         let sumSq = 0;
-        for (const v of weighted) sumSq += v * v;
+        for (let i = 0; i < numDims; i++) {
+          averaged[i] /= numEmbeddings;
+          sumSq += averaged[i] * averaged[i];
+        }
         const mag = Math.sqrt(sumSq);
-        if (mag > 1e-10) for (let i = 0; i < numBins; i++) weighted[i] /= mag;
-
-        const avgRms = allRms.reduce((s, v) => s + v, 0) / allRms.length;
+        if (mag > 1e-10) {
+          for (let i = 0; i < numDims; i++) averaged[i] /= mag;
+        }
 
         const profile: VoiceProfile = {
-          name:         nameToRegister,
-          spectrum:     weighted,
-          rmsThreshold: Number(Math.max(0.006, avgRms * 0.25).toFixed(4)),
-          sampleRate:   16000,
+          name: nameToRegister,
+          embedding: averaged,
         };
 
         setLocal(prev => ({
@@ -215,10 +196,9 @@ export default function SettingsModal({
         }));
 
         accumulatedFramesRef.current = [];
-        accumulatedRmsRef.current    = [];
         setNewVoiceName("");
         setEnrollStep(0);
-        setRecordingStatus(`✅ Voice profile for "${nameToRegister}" enrolled! (${numFrames} frames · 3 phrases)`);
+        setRecordingStatus(`✅ Advanced voice profile for "${nameToRegister}" enrolled!`);
         setRecordingVoice(false);
         setRecordingProgress(0);
       }
@@ -532,7 +512,6 @@ export default function SettingsModal({
                               if (e.key === "Enter" && newVoiceName.trim()) {
                                 setEnrollStep(1);
                                 accumulatedFramesRef.current = [];
-                                accumulatedRmsRef.current    = [];
                               }
                             }}
                           />
@@ -550,7 +529,6 @@ export default function SettingsModal({
                               }
                               setEnrollStep(1);
                               accumulatedFramesRef.current = [];
-                              accumulatedRmsRef.current    = [];
                               setRecordingStatus("");
                             }}
                             className="px-4 py-2 rounded-xl text-xs font-semibold text-white flex items-center gap-1.5 transition-all disabled:opacity-30"
@@ -624,7 +602,6 @@ export default function SettingsModal({
                               onClick={() => {
                                 setEnrollStep(0);
                                 accumulatedFramesRef.current = [];
-                                accumulatedRmsRef.current    = [];
                                 setRecordingStatus("Enrollment cancelled.");
                               }}
                               className="px-3.5 py-2.5 rounded-xl text-xs text-slate-400 hover:text-white hover:bg-white/8 transition-all"
