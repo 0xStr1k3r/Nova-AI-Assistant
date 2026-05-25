@@ -475,6 +475,26 @@ ${recentConversationsContext}`;
           required: ["command"],
         },
       });
+
+      functionDeclarations.push({
+        name: "runCodingAgent",
+        description: "Executes an advanced AI developer CLI agent ('opencode', 'claude', or 'copilot') headlessly to complete complex coding, multi-file writing, refactoring, testing, or debugging tasks. Runs in non-interactive mode with high timeouts.",
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            agent: {
+              type: Type.STRING,
+              enum: ["opencode", "claude", "copilot"],
+              description: "The AI coding agent tool to execute.",
+            },
+            prompt: {
+              type: Type.STRING,
+              description: "The complete, detailed coding instruction/prompt to send to the developer agent.",
+            },
+          },
+          required: ["agent", "prompt"],
+        },
+      });
     }
 
     try {
@@ -565,6 +585,64 @@ ${recentConversationsContext}`;
                   if (resultStr.length > 2000) {
                     resultStr = resultStr.substring(0, 2000) + "\n...[TRUNCATED]";
                   }
+                  toolResponses.push({
+                    id: call.id,
+                    name: call.name,
+                    response: { result: resultStr },
+                  });
+                } else if (call.name === "runCodingAgent") {
+                  const agent = (call.args as any).agent as string;
+                  const prompt = (call.args as any).prompt as string;
+                  
+                  logTurn("AGENT", `Running ${agent}: ${prompt}`);
+                  
+                  // Notify client that coding agent is starting
+                  clientWs.send(JSON.stringify({
+                    action: "agent_start",
+                    agent,
+                    prompt
+                  }));
+
+                  let command = "";
+                  if (agent === "opencode") {
+                    command = `opencode -p ${JSON.stringify(prompt)}`;
+                  } else if (agent === "claude") {
+                    command = `export PAGER=cat && claude --non-interactive -p ${JSON.stringify(prompt)}`;
+                  } else if (agent === "copilot") {
+                    command = `export PAGER=cat && copilot explain ${JSON.stringify(prompt)}`;
+                  }
+
+                  let resultStr = "";
+                  let success = true;
+                  let errorMsg = "";
+                  try {
+                    // Allow up to 180 seconds for coding agents to complete complex code generation/tests
+                    const { stdout, stderr } = await execAsync(command, {
+                      timeout: 180000,
+                      maxBuffer: 10 * 1024 * 1024, // 10MB buffer
+                    });
+                    resultStr = `STDOUT:\n${stdout}\nSTDERR:\n${stderr}`.trim();
+                    console.log(`[AGENT OK] ${agent} completed successfully`);
+                  } catch (error: any) {
+                    success = false;
+                    errorMsg = error.message;
+                    resultStr = `ERROR: ${error.message}\n${error.stderr ?? ""}`.trim();
+                    console.error(`[AGENT FAIL] ${agent}`, error.message);
+                  }
+
+                  // Notify client that coding agent has finished
+                  clientWs.send(JSON.stringify({
+                    action: "agent_end",
+                    agent,
+                    success,
+                    error: errorMsg
+                  }));
+
+                  // Truncate to a higher limit (15000 chars) for coding agents so we preserve full context
+                  if (resultStr.length > 15000) {
+                    resultStr = resultStr.substring(0, 15000) + "\n...[TRUNCATED IN ASSISTANT LOGS]";
+                  }
+
                   toolResponses.push({
                     id: call.id,
                     name: call.name,

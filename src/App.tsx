@@ -381,6 +381,16 @@ export default function App() {
           addLog("Nova ended the session — saying goodbye", "info");
           disconnect();
         }
+        if (msg.action === "agent_start") {
+          addLog(`🤖 Delegating task to ${msg.agent.toUpperCase()} Agent: "${msg.prompt}"`, "info");
+        }
+        if (msg.action === "agent_end") {
+          if (msg.success) {
+            addLog(`✅ ${msg.agent.toUpperCase()} Agent completed the coding task!`, "success");
+          } else {
+            addLog(`⚠️ ${msg.agent.toUpperCase()} Agent finished. Check console/terminal logs.`, "error");
+          }
+        }
       };
 
       ws.onclose = () => {
