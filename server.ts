@@ -413,6 +413,7 @@ CAPABILITIES:
   2. CONTEXT: List all files to be read/modified, active types/interfaces, or backend schemas.
   3. STEP-BY-STEP WORK: Provide precise requirements, design patterns, and edge cases to handle.
   4. VERIFICATION PLAN: Specify exactly what tests to run, how to build/compile, and what command commands to use to confirm success.
+- You have the openBrowser tool to open the default web browser on the local Linux desktop and navigate to URLs or search and play songs/videos on YouTube. Use this whenever the user asks to open a site, navigate to a page, or play music/songs/videos.
 VOICE RULES (non-negotiable):
 - Max 2-3 SHORT sentences per response. You are being spoken aloud.
 - NEVER say "Is there anything else I can help you with?" or any variant of that. EVER.
@@ -515,6 +516,25 @@ ${recentConversationsContext}`;
         parameters: {
           type: Type.OBJECT,
           properties: {},
+          required: [],
+        },
+      });
+
+      functionDeclarations.push({
+        name: "openBrowser",
+        description: "Opens the default web browser on the local Linux desktop and navigates to a URL or searches/plays a song on YouTube. Use this whenever the user asks to open a site, navigate to a webpage, or play music/songs/videos on YouTube.",
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            url: {
+              type: Type.STRING,
+              description: "The exact URL to navigate to (e.g. 'https://github.com'). Optional if youtubeSearchQuery is provided.",
+            },
+            youtubeSearchQuery: {
+              type: Type.STRING,
+              description: "The name of a song, artist, or video query to search and play on YouTube (e.g. 'shape of you ed sheeran'). Optional if url is provided.",
+            },
+          },
           required: [],
         },
       });
@@ -741,6 +761,67 @@ SUCCESS: ${code === 0}
                       prompt: activeAgentPrompt || "none",
                       durationSeconds: activeAgentStartTime ? Math.round((Date.now() - activeAgentStartTime) / 1000) : 0,
                       recentLogs: recentLogs,
+                    },
+                  });
+                } else if (call.name === "openBrowser") {
+                  const url = (call.args as any).url as string;
+                  const youtubeSearchQuery = (call.args as any).youtubeSearchQuery as string;
+                  
+                  logTurn("BROWSER", `Opening browser: URL=${url || "none"}, Query=${youtubeSearchQuery || "none"}`);
+
+                  let targetUrl = "";
+                  if (youtubeSearchQuery) {
+                    const encoded = encodeURIComponent(youtubeSearchQuery);
+                    targetUrl = `https://www.youtube.com/results?search_query=${encoded}`;
+                  } else if (url) {
+                    targetUrl = url;
+                    if (!/^https?:\/\//i.test(targetUrl)) {
+                      targetUrl = 'https://' + targetUrl;
+                    }
+                  }
+
+                  let resultStr = "";
+                  let success = true;
+                  if (!targetUrl) {
+                    resultStr = "ERROR: Neither URL nor YouTube search query was provided.";
+                    success = false;
+                  } else {
+                    try {
+                      const xdgCommand = `export DISPLAY=:0 && xdg-open ${JSON.stringify(targetUrl)}`;
+                      console.log(`[BROWSER SPAWN] Executing: ${xdgCommand}`);
+                      
+                      await execAsync(xdgCommand, {
+                        timeout: 5000,
+                      });
+                      resultStr = `Successfully opened browser and navigated to: ${targetUrl}`;
+                      console.log(`[BROWSER OK] Opened ${targetUrl}`);
+                    } catch (error: any) {
+                      success = false;
+                      try {
+                        console.log(`[BROWSER FALLBACK] Retrying standard xdg-open without DISPLAY...`);
+                        await execAsync(`xdg-open ${JSON.stringify(targetUrl)}`, { timeout: 5000 });
+                        resultStr = `Successfully opened browser via fallback: ${targetUrl}`;
+                        success = true;
+                        console.log(`[BROWSER FALLBACK OK] Opened ${targetUrl}`);
+                      } catch (err2: any) {
+                        resultStr = `ERROR: Failed to open browser. ${error.message} (Fallback error: ${err2.message})`;
+                        console.error(`[BROWSER FAIL] ${targetUrl}`, error.message);
+                      }
+                    }
+                  }
+
+                  clientWs.send(JSON.stringify({
+                    action: "browser_opened",
+                    url: targetUrl,
+                    success
+                  }));
+
+                  toolResponses.push({
+                    id: call.id,
+                    name: call.name,
+                    response: {
+                      success,
+                      result: resultStr,
                     },
                   });
                 } else if (call.name === "delegateComplexTask") {

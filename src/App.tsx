@@ -391,6 +391,13 @@ export default function App() {
             addLog(`⚠️ ${msg.agent.toUpperCase()} Agent finished. Check console/terminal logs.`, "error");
           }
         }
+        if (msg.action === "browser_opened") {
+          if (msg.success) {
+            addLog(`🌐 Opened browser and navigated to: ${msg.url}`, "success");
+          } else {
+            addLog(`❌ Failed to open browser for: ${msg.url}`, "error");
+          }
+        }
       };
 
       ws.onclose = () => {
