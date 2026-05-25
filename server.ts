@@ -80,7 +80,7 @@ import {
   launchApplication,
   listInstalledApplications,
 } from "./src/server/gui-automation";
-import { runCustomNvidiaAgent } from "./agent/nvidia-agent";
+import { runCustomNvidiaAgent, cancelledAgents } from "./agent/nvidia-agent";
 
 const execAsync = util.promisify(exec);
 
@@ -614,13 +614,18 @@ ${recentConversationsContext}`;
 
       functionDeclarations.push({
         name: "getCodingAgentStatus",
-        description: "Checks the running status and recent progress of background coding agents. Can take a specific agentId to check that agent, or return a list of all active/past agents if omitted.",
+        description: "Checks the running status, progress, logs, or cancels background coding agents. Can inspect details, fetch full log files, or abort active executions.",
         parameters: {
           type: Type.OBJECT,
           properties: {
             agentId: {
               type: Type.STRING,
-              description: "The unique ID of the specific agent session to inspect.",
+              description: "The unique ID of the specific agent session to inspect or manage.",
+            },
+            action: {
+              type: Type.STRING,
+              enum: ["status", "cancel", "fullLogs"],
+              description: "The action to perform: 'status' to get current status and recent logs, 'cancel' to abort active agent execution, or 'fullLogs' to retrieve the complete log file content.",
             }
           },
           required: [],
@@ -1091,7 +1096,7 @@ ${recentConversationsContext}`;
                   }));
 
                   // Start the agent loop asynchronously in the background
-                  runCustomNvidiaAgent(prompt, apiKey, selectedModel, logPath, (msg) => {
+                  runCustomNvidiaAgent(agentId, prompt, apiKey, selectedModel, logPath, (msg) => {
                     if (clientWs.readyState === 1 /* OPEN */) {
                       clientWs.send(JSON.stringify({
                         action: "agent_log",
@@ -1144,63 +1149,132 @@ ${recentConversationsContext}`;
                   });
                 } else if (call.name === "getCodingAgentStatus") {
                   const agentId = (call.args as any).agentId as string;
-                  logTurn("AGENT_STATUS", `Checking agent status: ${agentId || "all"}`);
+                  const action = ((call.args as any).action as string) || "status";
+                  logTurn("AGENT_STATUS", `Managing agent status: ${agentId || "all"}, action: ${action}`);
 
-                  if (agentId) {
-                    const agent = activeAgents.get(agentId);
-                    if (!agent) {
+                  if (action === "cancel") {
+                    if (!agentId) {
                       toolResponses.push({
                         id: call.id,
                         name: call.name,
-                        response: { error: `Coding agent session with ID "${agentId}" not found.` }
+                        response: { error: "Agent ID parameter is required for 'cancel' action." }
                       });
                     } else {
-                      let recentLogs = "No active logs found.";
-                      if (fs.existsSync(agent.logPath)) {
-                        try {
-                          const fullContent = fs.readFileSync(agent.logPath, "utf-8");
-                          const lines = fullContent.split("\n");
-                          recentLogs = lines.slice(-25).join("\n");
-                        } catch (e: any) {
-                          recentLogs = `Error reading status file: ${e.message}`;
-                        }
+                      const agent = activeAgents.get(agentId);
+                      if (!agent) {
+                        toolResponses.push({
+                          id: call.id,
+                          name: call.name,
+                          response: { error: `Coding agent session with ID "${agentId}" not found.` }
+                        });
+                      } else {
+                        cancelledAgents.add(agentId);
+                        agent.running = false;
+                        agent.summary = "Cancelled by assistant request.";
+                        
+                        toolResponses.push({
+                          id: call.id,
+                          name: call.name,
+                          response: {
+                            success: true,
+                            message: `Marked agent [${agentId}] for cancellation. It will stop on its next step.`,
+                            agentId
+                          }
+                        });
                       }
+                    }
+                  } else if (action === "fullLogs") {
+                    if (!agentId) {
+                      toolResponses.push({
+                        id: call.id,
+                        name: call.name,
+                        response: { error: "Agent ID parameter is required for 'fullLogs' action." }
+                      });
+                    } else {
+                      const agent = activeAgents.get(agentId);
+                      if (!agent) {
+                        toolResponses.push({
+                          id: call.id,
+                          name: call.name,
+                          response: { error: `Coding agent session with ID "${agentId}" not found.` }
+                        });
+                      } else {
+                        let fullLogs = "No active logs found.";
+                        if (fs.existsSync(agent.logPath)) {
+                          try {
+                            fullLogs = fs.readFileSync(agent.logPath, "utf-8");
+                          } catch (e: any) {
+                            fullLogs = `Error reading status file: ${e.message}`;
+                          }
+                        }
+                        toolResponses.push({
+                          id: call.id,
+                          name: call.name,
+                          response: {
+                            agentId,
+                            fullLogs
+                          }
+                        });
+                      }
+                    }
+                  } else {
+                    // Default action: status
+                    if (agentId) {
+                      const agent = activeAgents.get(agentId);
+                      if (!agent) {
+                        toolResponses.push({
+                          id: call.id,
+                          name: call.name,
+                          response: { error: `Coding agent session with ID "${agentId}" not found.` }
+                        });
+                      } else {
+                        let recentLogs = "No active logs found.";
+                        if (fs.existsSync(agent.logPath)) {
+                          try {
+                            const fullContent = fs.readFileSync(agent.logPath, "utf-8");
+                            const lines = fullContent.split("\n");
+                            recentLogs = lines.slice(-25).join("\n");
+                          } catch (e: any) {
+                            recentLogs = `Error reading status file: ${e.message}`;
+                          }
+                        }
+
+                        toolResponses.push({
+                          id: call.id,
+                          name: call.name,
+                          response: {
+                            agentId: agent.agentId,
+                            model: agent.model,
+                            prompt: agent.prompt,
+                            isRunning: agent.running,
+                            durationSeconds: Math.round((Date.now() - agent.startTime) / 1000),
+                            recentLogs,
+                            summary: agent.summary,
+                            error: agent.error
+                          },
+                        });
+                      }
+                    } else {
+                      // Return summary list of all agents
+                      const list = Array.from(activeAgents.values()).map(a => ({
+                        agentId: a.agentId,
+                        model: a.model,
+                        prompt: a.prompt,
+                        isRunning: a.running,
+                        durationSeconds: Math.round((Date.now() - a.startTime) / 1000),
+                        summary: a.summary,
+                        error: a.error
+                      }));
 
                       toolResponses.push({
                         id: call.id,
                         name: call.name,
                         response: {
-                          agentId: agent.agentId,
-                          model: agent.model,
-                          prompt: agent.prompt,
-                          isRunning: agent.running,
-                          durationSeconds: Math.round((Date.now() - agent.startTime) / 1000),
-                          recentLogs,
-                          summary: agent.summary,
-                          error: agent.error
+                          agentsCount: list.length,
+                          agents: list
                         },
                       });
                     }
-                  } else {
-                    // Return summary list of all agents
-                    const list = Array.from(activeAgents.values()).map(a => ({
-                      agentId: a.agentId,
-                      model: a.model,
-                      prompt: a.prompt,
-                      isRunning: a.running,
-                      durationSeconds: Math.round((Date.now() - a.startTime) / 1000),
-                      summary: a.summary,
-                      error: a.error
-                    }));
-
-                    toolResponses.push({
-                      id: call.id,
-                      name: call.name,
-                      response: {
-                        agentsCount: list.length,
-                        agents: list
-                      },
-                    });
                   }
                 } else if (call.name === "openBrowser") {
                   const action = ((call.args as any).action as string) || "navigate";

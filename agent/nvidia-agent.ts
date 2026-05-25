@@ -220,7 +220,10 @@ function pruneHistory(history: any[], logPath: string, onProgress?: (msg: string
   return history;
 }
 
+export const cancelledAgents = new Set<string>();
+
 export async function runCustomNvidiaAgent(
+  agentId: string,
   prompt: string,
   apiKey: string,
   model: string,
@@ -285,6 +288,13 @@ Available Tools:
   let finalSummary = "Agent timed out or reached execution limit.";
 
   while (currentStep <= maxSteps && !finished) {
+    if (cancelledAgents.has(agentId)) {
+      logProgress(`[System] Agent execution cancelled by assistant request.`, logPath, onProgress);
+      finished = true;
+      finalSummary = "Agent was cancelled by the assistant.";
+      break;
+    }
+
     logProgress(`\n--- Step ${currentStep} / ${maxSteps} ---`, logPath, onProgress);
     
     // Context pruning check
@@ -318,20 +328,41 @@ Available Tools:
       conversationHistory.push({ role: "assistant", content: reply });
 
       // Action parser
-      const actionMatch = reply.match(/Action:\s*(\{[\s\S]*\})/);
-      if (!actionMatch) {
+      let actionMatch = reply.match(/Action:\s*(\{[\s\S]*\})/);
+      let jsonString = "";
+      if (actionMatch) {
+        jsonString = actionMatch[1];
+      } else {
+        // Fallback: look for any JSON block starting with { and ending with } in the reply
+        const fallbackMatch = reply.match(/(\{[\s\S]*\})/);
+        if (fallbackMatch) {
+          jsonString = fallbackMatch[1];
+        }
+      }
+
+      if (!jsonString) {
         logProgress("WARNING: Could not parse Action JSON block. Requesting formatting recovery...", logPath, onProgress);
         conversationHistory.push({
           role: "user",
-          content: "Formatting Error: I couldn't find a JSON block starting with 'Action: {'. Please strictly reply with 'Thought: <reasoning>' and 'Action: { \"name\": \"...\", \"args\": { ... } }' and try again."
+          content: "Formatting Error: I couldn't find any JSON block starting with '{'. Please strictly reply with 'Thought: <reasoning>' and 'Action: { \"name\": \"...\", \"args\": { ... } }' and try again."
         });
         currentStep++;
         continue;
       }
 
+      let cleanJson = jsonString.trim();
+      // Remove leading/trailing markdown code blocks if the model wrapped it
+      if (cleanJson.startsWith("```")) {
+        const firstBrace = cleanJson.indexOf("{");
+        const lastBrace = cleanJson.lastIndexOf("}");
+        if (firstBrace !== -1 && lastBrace !== -1) {
+          cleanJson = cleanJson.substring(firstBrace, lastBrace + 1);
+        }
+      }
+
       let action: { name: string; args: any };
       try {
-        action = JSON.parse(actionMatch[1]);
+        action = JSON.parse(cleanJson);
       } catch (err: any) {
         logProgress(`WARNING: Action JSON is malformed: ${err.message}. Requesting recovery...`, logPath, onProgress);
         conversationHistory.push({
