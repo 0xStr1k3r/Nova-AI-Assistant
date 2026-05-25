@@ -382,16 +382,16 @@ export default function App() {
           disconnect();
         }
         if (msg.action === "agent_start") {
-          addLog(`🤖 Delegating task to ${msg.agent.toUpperCase()} Agent: "${msg.prompt}"`, "info");
+          addLog(`🤖 Spawned Agent [${msg.agentId}] (model: ${msg.model}): "${msg.prompt}"`, "info");
         }
         if (msg.action === "agent_log") {
-          addLog(`[Agent Log] ${msg.message}`, "info");
+          addLog(`[Agent ${msg.agentId}] ${msg.message}`, "info");
         }
         if (msg.action === "agent_end") {
           if (msg.success) {
-            addLog(`✅ ${msg.agent.toUpperCase()} Agent completed the coding task!`, "success");
+            addLog(`✅ Agent [${msg.agentId}] completed the task! Summary: ${msg.summary || "Success"}`, "success");
           } else {
-            addLog(`⚠️ ${msg.agent.toUpperCase()} Agent finished. Check console/terminal logs.`, "error");
+            addLog(`⚠️ Agent [${msg.agentId}] failed. Error: ${msg.error || "Check logs"}`, "error");
           }
         }
         if (msg.action === "browser_opened") {

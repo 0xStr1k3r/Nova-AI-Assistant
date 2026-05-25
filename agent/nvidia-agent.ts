@@ -5,7 +5,6 @@ import * as util from "util";
 
 const execAsync = util.promisify(exec);
 const PROJECT_ROOT = "/home/chiru/antigravity/Nexus-OS-Voice-Assistant";
-const STATUS_LOG_PATH = "/home/chiru/.config/nova-voice-assistant/coding_agent_status.log";
 
 // Dynamic task-based model selection from the fast NIM catalog
 export function selectBestModelForTask(prompt: string): string {
@@ -24,7 +23,7 @@ export function selectBestModelForTask(prompt: string): string {
     promptLower.includes("look at") ||
     promptLower.includes("see on screen")
   ) {
-    return "meta/llama-3.2-11b-vision-instruct"; // 0.22s - Very fast vision instruction model
+    return "meta/llama-3.2-11b-vision-instruct"; // 0.22s - Vision instruct
   }
   
   // 2. Complex Coding, Architecture, DB schema, or large scale refactoring
@@ -44,7 +43,7 @@ export function selectBestModelForTask(prompt: string): string {
     promptLower.includes("fix all bugs") ||
     promptLower.includes("debug complex")
   ) {
-    return "qwen/qwen3-coder-480b-a35b-instruct"; // 2.53s - Extremely powerful coder model
+    return "qwen/qwen3-coder-480b-a35b-instruct"; // 2.53s - Extremely powerful coder
   }
   
   // 3. Medium coding/scripting
@@ -57,7 +56,7 @@ export function selectBestModelForTask(prompt: string): string {
     promptLower.includes("create file") ||
     promptLower.includes("implement")
   ) {
-    return "meta/llama-3.3-70b-instruct"; // 1.28s - Stable, solid coding instruction
+    return "meta/llama-3.3-70b-instruct"; // 1.28s - Solid coding instruction
   }
   
   // 4. System Admin, Daemon configuration, installation routines
@@ -72,30 +71,148 @@ export function selectBestModelForTask(prompt: string): string {
     promptLower.includes("admin") ||
     promptLower.includes("run command")
   ) {
-    return "deepseek-ai/deepseek-v4-pro"; // 0.46s - High reasoning accuracy for shell commands
+    return "deepseek-ai/deepseek-v4-pro"; // 0.46s - High reasoning accuracy
   }
   
   // 5. Default/Simple tasks
-  return "meta/llama-3.1-8b-instruct"; // 0.21s - Fastest standard response model
+  return "meta/llama-3.1-8b-instruct"; // 0.21s - Fastest standard model
 }
 
-// Helper to log progress to console, status file, and WebSocket callback
-function logProgress(msg: string, onProgress?: (msg: string) => void) {
+// Scrapes DuckDuckGo HTML results for search queries
+async function performDuckDuckGoHtmlSearch(query: string): Promise<any[]> {
+  try {
+    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) {
+      throw new Error(`DDG HTML HTTP error: ${res.status}`);
+    }
+    const html = await res.text();
+    const results: any[] = [];
+    
+    // Find result anchors: class="result__a"
+    const matches = html.matchAll(/<a\s+class="[a-zA-Z0-9_-]*result__a[a-zA-Z0-9_-]*"\s+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi);
+    
+    let count = 0;
+    for (const match of matches) {
+      if (count >= 5) break;
+      let rawUrl = match[1];
+      const title = match[2].replace(/<[^>]+>/g, "").trim();
+      
+      if (rawUrl.includes("uddg=")) {
+        const uddgMatch = rawUrl.match(/uddg=([^&]+)/);
+        if (uddgMatch) {
+          rawUrl = decodeURIComponent(uddgMatch[1]);
+        }
+      }
+      if (rawUrl.startsWith("//")) rawUrl = "https:" + rawUrl;
+
+      const startIndex = html.indexOf(match[0]);
+      if (startIndex !== -1) {
+        const htmlSlice = html.substring(startIndex, startIndex + 1500);
+        const snippetMatch = htmlSlice.match(/<a\s+class="[a-zA-Z0-9_-]*result__snippet[a-zA-Z0-9_-]*"[^>]*>([\s\S]*?)<\/a>/i);
+        const content = snippetMatch ? snippetMatch[1].replace(/<[^>]+>/g, "").trim() : "";
+        
+        results.push({
+          title,
+          url: rawUrl,
+          content,
+        });
+        count++;
+      }
+    }
+    return results;
+  } catch (err: any) {
+    console.warn(`[DDG HTML SEARCH WARNING] ${err.message}`);
+    return [];
+  }
+}
+
+// Queries SearXNG instances with fallbacks (DuckDuckGo HTML scraper)
+async function performWebSearch(query: string): Promise<any[]> {
+  const searxInstances = [
+    "https://search.mdosch.de/",
+    "https://searx.oloke.xyz/",
+    "https://etsi.me/",
+    "https://searx.be/",
+    "https://priv.au/",
+    "https://searx.work/"
+  ];
+  
+  const shuffledInstances = [...searxInstances].sort(() => Math.random() - 0.5);
+  
+  for (const inst of shuffledInstances) {
+    try {
+      const url = `${inst}search?q=${encodeURIComponent(query)}&format=json`;
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        },
+        signal: AbortSignal.timeout(4000)
+      });
+      if (res.ok) {
+        const data: any = await res.json();
+        if (data.results && data.results.length > 0) {
+          return data.results.slice(0, 5).map((r: any) => ({
+            title: r.title,
+            url: r.url,
+            content: r.content || r.snippet || ""
+          }));
+        }
+      }
+    } catch (e: any) {
+      console.warn(`[SEARCH WARNING] Failed querying instance ${inst}: ${e.message}`);
+    }
+  }
+
+  // Fallback to DuckDuckGo HTML
+  return await performDuckDuckGoHtmlSearch(query);
+}
+
+// Fetches target webpage and returns sanitized text
+async function fetchWebpageContent(url: string): Promise<string> {
+  const res = await fetch(url, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    },
+    signal: AbortSignal.timeout(10000)
+  });
+  if (!res.ok) {
+    throw new Error(`HTTP error ${res.status}`);
+  }
+  const html = await res.text();
+  let text = html
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text.substring(0, 5000); // Limit to 5000 characters
+}
+
+// Helper to log progress to console, file, and WebSocket callback
+function logProgress(msg: string, logPath: string, onProgress?: (msg: string) => void) {
   console.log(`[NVIDIA-AGENT] ${msg}`);
-  fs.appendFileSync(STATUS_LOG_PATH, `${msg}\n`, "utf-8");
+  fs.appendFileSync(logPath, `${msg}\n`, "utf-8");
   if (onProgress) {
     onProgress(msg);
   }
 }
 
-// Prunes conversation history turns to save tokens and prevent context crash
-function pruneHistory(history: any[], onProgress?: (msg: string) => void): any[] {
+// Prunes conversation history turns to save tokens
+function pruneHistory(history: any[], logPath: string, onProgress?: (msg: string) => void): any[] {
   if (history.length > 14) {
-    logProgress("[System] Pruning agent conversation context to prevent token overflows...", onProgress);
+    logProgress("[System] Pruning agent conversation context to prevent token overflows...", logPath, onProgress);
     const systemMsg = history[0];
     const initialUserMsg = history[1];
     
-    // Retain the last 6 turns (thoughts + actions + observations)
+    // Retain the last 6 turns
     const recentHistory = history.slice(-6);
     return [systemMsg, initialUserMsg, ...recentHistory];
   }
@@ -106,13 +223,17 @@ export async function runCustomNvidiaAgent(
   prompt: string,
   apiKey: string,
   model: string,
+  logPath: string,
   onProgress?: (msg: string) => void
 ): Promise<string> {
-  // Resolve correct model selection
+  // Resolve model selection
   let selectedModel = model;
   if (model === "auto" || !model) {
     selectedModel = selectBestModelForTask(prompt);
   }
+
+  // Ensure config dir exists
+  fs.mkdirSync(path.dirname(logPath), { recursive: true });
 
   // Write Start Header to status file
   const startHeader = `================================================
@@ -121,9 +242,9 @@ MODEL: ${selectedModel}
 TIME: ${new Date().toISOString()}
 PROMPT: ${prompt}
 ================================================\n\n`;
-  fs.writeFileSync(STATUS_LOG_PATH, startHeader, "utf-8");
+  fs.writeFileSync(logPath, startHeader, "utf-8");
 
-  logProgress(`Initializing autonomous developer agent loop (Model: ${selectedModel})...`, onProgress);
+  logProgress(`Initializing autonomous developer agent loop (Model: ${selectedModel})...`, logPath, onProgress);
 
   const systemInstruction = `You are "Nova Developer Agent", a premium local autonomous software engineering agent.
 Your objective: "${prompt}"
@@ -148,6 +269,8 @@ Available Tools:
 - write_file: { "path": string, "content": string } - Overwrites or creates a new file.
 - edit_file: { "path": string, "targetContent": string, "replacementContent": string } - Replaces unique targetContent block inside target file.
 - run_command: { "cmd": string } - Executes shell command.
+- web_search: { "query": string } - Queries Search engines (SearXNG / DuckDuckGo) to research frameworks, docs, or errors.
+- fetch_webpage: { "url": string } - Fetches plain text HTML content of a URL for documentation lookup.
 - finish: { "summary": string } - Ends task with final results summary.`;
 
   let conversationHistory: any[] = [
@@ -161,13 +284,13 @@ Available Tools:
   let finalSummary = "Agent timed out or reached execution limit.";
 
   while (currentStep <= maxSteps && !finished) {
-    logProgress(`\n--- Step ${currentStep} / ${maxSteps} ---`, onProgress);
+    logProgress(`\n--- Step ${currentStep} / ${maxSteps} ---`, logPath, onProgress);
     
     // Context pruning check
-    conversationHistory = pruneHistory(conversationHistory, onProgress);
+    conversationHistory = pruneHistory(conversationHistory, logPath, onProgress);
 
     try {
-      logProgress(`Querying NVIDIA API (${selectedModel})...`, onProgress);
+      logProgress(`Querying NVIDIA API (${selectedModel})...`, logPath, onProgress);
       const response = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -190,13 +313,13 @@ Available Tools:
       const data = await response.json();
       const reply = data.choices?.[0]?.message?.content || "";
       
-      logProgress(`[Agent Thought & Action]:\n${reply}`, onProgress);
+      logProgress(`[Agent Thought & Action]:\n${reply}`, logPath, onProgress);
       conversationHistory.push({ role: "assistant", content: reply });
 
-      // Action parser with heuristics to extract JSON block even with extra text
+      // Action parser
       const actionMatch = reply.match(/Action:\s*(\{[\s\S]*\})/);
       if (!actionMatch) {
-        logProgress("WARNING: Could not parse Action JSON block. Requesting formatting recovery...", onProgress);
+        logProgress("WARNING: Could not parse Action JSON block. Requesting formatting recovery...", logPath, onProgress);
         conversationHistory.push({
           role: "user",
           content: "Formatting Error: I couldn't find a JSON block starting with 'Action: {'. Please strictly reply with 'Thought: <reasoning>' and 'Action: { \"name\": \"...\", \"args\": { ... } }' and try again."
@@ -209,7 +332,7 @@ Available Tools:
       try {
         action = JSON.parse(actionMatch[1]);
       } catch (err: any) {
-        logProgress(`WARNING: Action JSON is malformed: ${err.message}. Requesting recovery...`, onProgress);
+        logProgress(`WARNING: Action JSON is malformed: ${err.message}. Requesting recovery...`, logPath, onProgress);
         conversationHistory.push({
           role: "user",
           content: `JSON Malformed: ${err.message}. Please verify the keys are properly quoted and try again.`
@@ -218,7 +341,7 @@ Available Tools:
         continue;
       }
 
-      logProgress(`Executing tool "${action.name}"...`, onProgress);
+      logProgress(`Executing tool "${action.name}"...`, logPath, onProgress);
       let toolOutput = "";
 
       switch (action.name) {
@@ -374,7 +497,7 @@ Available Tools:
 
         case "run_command": {
           const cmd = action.args.cmd;
-          logProgress(`[Shell]: Running command: ${cmd}`, onProgress);
+          logProgress(`[Shell]: Running command: ${cmd}`, logPath, onProgress);
           try {
             const { stdout, stderr } = await execAsync(cmd, {
               cwd: PROJECT_ROOT,
@@ -388,6 +511,32 @@ Available Tools:
           break;
         }
 
+        case "web_search": {
+          const query = action.args.query;
+          logProgress(`[Search]: Querying web search: "${query}"`, logPath, onProgress);
+          try {
+            const searchResults = await performWebSearch(query);
+            toolOutput = searchResults.length > 0
+              ? `Search Results for "${query}":\n` + searchResults.map((r, i) => `${i+1}. [${r.title}](${r.url})\nSnippet: ${r.content}`).join("\n\n")
+              : "No search results found.";
+          } catch (err: any) {
+            toolOutput = `ERROR: Web search failed: ${err.message}`;
+          }
+          break;
+        }
+
+        case "fetch_webpage": {
+          const url = action.args.url;
+          logProgress(`[Scrape]: Fetching webpage content: ${url}`, logPath, onProgress);
+          try {
+            const parsedContent = await fetchWebpageContent(url);
+            toolOutput = `Content of webpage "${url}":\n${parsedContent}`;
+          } catch (err: any) {
+            toolOutput = `ERROR: Fetching webpage content failed: ${err.message}`;
+          }
+          break;
+        }
+
         case "finish": {
           finished = true;
           finalSummary = action.args.summary || "Completed task successfully.";
@@ -396,15 +545,15 @@ Available Tools:
         }
 
         default: {
-          toolOutput = `ERROR: Unknown tool "${action.name}". Available tools: list_dir, find_files, search_grep, read_file, write_file, edit_file, run_command, finish.`;
+          toolOutput = `ERROR: Unknown tool "${action.name}". Available tools: list_dir, find_files, search_grep, read_file, write_file, edit_file, run_command, web_search, fetch_webpage, finish.`;
         }
       }
 
-      logProgress(`Tool Result:\n${toolOutput.substring(0, 800)}${toolOutput.length > 800 ? "\n...[TRUNCATED]" : ""}`, onProgress);
+      logProgress(`Tool Result:\n${toolOutput.substring(0, 800)}${toolOutput.length > 800 ? "\n...[TRUNCATED]" : ""}`, logPath, onProgress);
       conversationHistory.push({ role: "user", content: `Observation:\n${toolOutput}` });
 
     } catch (e: any) {
-      logProgress(`CRITICAL AGENT ERROR: ${e.message}`, onProgress);
+      logProgress(`CRITICAL AGENT ERROR: ${e.message}`, logPath, onProgress);
       conversationHistory.push({ role: "user", content: `Observation error: ${e.message}. Correct and retry.` });
     }
 
@@ -416,7 +565,7 @@ CUSTOM NVIDIA AGENT FINISHED
 TIME: ${new Date().toISOString()}
 SUMMARY: ${finalSummary}
 ================================================\n`;
-  fs.appendFileSync(STATUS_LOG_PATH, endFooter, "utf-8");
+  fs.appendFileSync(logPath, endFooter, "utf-8");
 
   return finalSummary;
 }

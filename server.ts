@@ -81,12 +81,17 @@ import { runCustomNvidiaAgent } from "./agent/nvidia-agent";
 const execAsync = util.promisify(exec);
 
 // Background agent execution state
-let activeAgentProcess: any = null;
-let activeAgentRunning = false;
-let activeAgentName = "";
-let activeAgentPrompt = "";
-let activeAgentStartTime = 0;
-const STATUS_LOG_PATH = "/home/chiru/.config/nova-voice-assistant/coding_agent_status.log";
+interface ActiveAgent {
+  agentId: string;
+  model: string;
+  prompt: string;
+  startTime: number;
+  running: boolean;
+  logPath: string;
+  summary?: string;
+  error?: string;
+}
+const activeAgents = new Map<string, ActiveAgent>();
 
 // Helper to write NVIDIA_API_KEY directly into the local .env file
 function writeNvidiaApiKeyToEnv(key: string) {
@@ -579,14 +584,18 @@ ${recentConversationsContext}`;
 
       functionDeclarations.push({
         name: "runCodingAgent",
-        description: "Executes the custom local autonomous AI developer agent powered by NVIDIA NIM in the background to complete complex coding, multi-file writing, refactoring, testing, or debugging tasks. Runs asynchronously.",
+        description: "Spawns a custom local autonomous AI developer coding agent in the background to handle coding, file editing, or deep research tasks. Can be run concurrently. Returns a unique agentId immediately.",
         parameters: {
           type: Type.OBJECT,
           properties: {
             prompt: {
               type: Type.STRING,
-              description: "The complete, detailed coding instruction/prompt to send to the developer agent.",
+              description: "The complete, detailed objective/prompt for the autonomous coding agent.",
             },
+            model: {
+              type: Type.STRING,
+              description: "Optional model name to override auto-selection (e.g. 'qwen/qwen3-coder-480b-a35b-instruct', 'meta/llama-3.3-70b-instruct', or 'auto'). Defaults to 'auto'.",
+            }
           },
           required: ["prompt"],
         },
@@ -594,10 +603,15 @@ ${recentConversationsContext}`;
 
       functionDeclarations.push({
         name: "getCodingAgentStatus",
-        description: "Checks the running status and recent progress of the background coding agent. Returns whether an agent is active, which agent is running, and the last 15 lines of its terminal logs/status output. Call this to monitor progress or when the user asks for status updates.",
+        description: "Checks the running status and recent progress of background coding agents. Can take a specific agentId to check that agent, or return a list of all active/past agents if omitted.",
         parameters: {
           type: Type.OBJECT,
-          properties: {},
+          properties: {
+            agentId: {
+              type: Type.STRING,
+              description: "The unique ID of the specific agent session to inspect.",
+            }
+          },
           required: [],
         },
       });
@@ -967,116 +981,148 @@ ${recentConversationsContext}`;
                   });
                 } else if (call.name === "runCodingAgent") {
                   const prompt = (call.args as any).prompt as string;
-                  
-                  logTurn("AGENT", `Requested NVIDIA agent: ${prompt}`);
+                  const requestedModel = (call.args as any).model as string;
 
-                  // Check if another coding agent is already running
-                  let isAlreadyRunning = activeAgentRunning;
+                  // Generate a unique agentId
+                  const agentId = "agent_" + Math.random().toString(36).substring(2, 9);
+                  const db = getDb();
+                  const apiKey = process.env.NVIDIA_API_KEY || db.integrations?.nvidiaApiKey || "";
+                  const selectedModel = requestedModel || db.integrations?.nvidiaModel || "auto";
 
-                  if (isAlreadyRunning) {
-                    const errorMsg = `⚠️ Spawning blocked: An active developer coding agent is currently running in the background. Wait for the current agent task to complete or query getCodingAgentStatus.`;
-                    console.log(`[AGENT BLOCKED] Spawning NVIDIA agent blocked by active running agent`);
-                    
-                    toolResponses.push({
-                      id: call.id,
-                      name: call.name,
-                      response: {
-                        status: "error",
-                        result: errorMsg
-                      },
-                    });
-                  } else {
-                    // Start the new agent in the background
-                    // Notify client that coding agent is starting
-                    clientWs.send(JSON.stringify({
-                      action: "agent_start",
-                      agent: "nvidia",
-                      prompt
-                    }));
+                  logTurn("AGENT", `Spawning concurrent agent [${agentId}] (model: ${selectedModel}): ${prompt}`);
 
-                    const db = getDb();
-                    const apiKey = process.env.NVIDIA_API_KEY || db.integrations?.nvidiaApiKey || "";
-                    const model = db.integrations?.nvidiaModel || "auto";
+                  const logPath = path.join("/home/chiru/.config/nova-voice-assistant", `coding_agent_${agentId}.log`);
 
-                    activeAgentRunning = true;
-                    activeAgentName = "nvidia";
-                    activeAgentPrompt = prompt;
-                    activeAgentStartTime = Date.now();
+                  // Initialize the tracking state
+                  activeAgents.set(agentId, {
+                    agentId,
+                    model: selectedModel,
+                    prompt,
+                    startTime: Date.now(),
+                    running: true,
+                    logPath
+                  });
 
-                    // Run the custom NVIDIA agent asynchronously in the background
-                    runCustomNvidiaAgent(prompt, apiKey, model, (msg) => {
-                      // Broadcast agent progress log to client
-                      if (clientWs.readyState === 1 /* OPEN */) {
-                        clientWs.send(JSON.stringify({
-                          action: "agent_log",
-                          agent: "nvidia",
-                          message: msg
-                        }));
-                      }
-                    }).then((summary) => {
-                      activeAgentRunning = false;
-                      // Notify client that coding agent has finished
-                      if (clientWs.readyState === 1 /* OPEN */) {
-                        clientWs.send(JSON.stringify({
-                          action: "agent_end",
-                          agent: "nvidia",
-                          success: true,
-                          summary
-                        }));
-                      }
-                      console.log(`[AGENT SUCCESS] Custom NVIDIA Coding Agent finished. Summary: ${summary}`);
-                    }).catch((err) => {
-                      activeAgentRunning = false;
-                      if (clientWs.readyState === 1 /* OPEN */) {
-                        clientWs.send(JSON.stringify({
-                          action: "agent_end",
-                          agent: "nvidia",
-                          success: false,
-                          error: err.message
-                        }));
-                      }
-                      console.error(`[AGENT ERROR] Custom NVIDIA Coding Agent failed:`, err);
-                    });
+                  // Notify the WebSocket client
+                  clientWs.send(JSON.stringify({
+                    action: "agent_start",
+                    agentId,
+                    model: selectedModel,
+                    prompt
+                  }));
 
-                    const spawnResult = `🤖 Successfully spawned the NVIDIA coding agent in the background to handle the task using model "${model}". All logs and progress are being written to ${STATUS_LOG_PATH}. You can check its progress using the getCodingAgentStatus tool at any time. Do not block; you can reply to the user normally now and tell them the agent is running in the background.`;
-
-                    toolResponses.push({
-                      id: call.id,
-                      name: call.name,
-                      response: {
-                        status: "success",
-                        result: spawnResult
-                      },
-                    });
-                  }
-                } else if (call.name === "getCodingAgentStatus") {
-                  logTurn("AGENT_STATUS", "Checking background agent status");
-                  
-                  let isRunning = activeAgentRunning;
-
-                  let recentLogs = "No active logs found.";
-                  if (fs.existsSync(STATUS_LOG_PATH)) {
-                    try {
-                      const fullContent = fs.readFileSync(STATUS_LOG_PATH, "utf-8");
-                      const lines = fullContent.split("\n");
-                      // Return the last 20 lines of logs
-                      recentLogs = lines.slice(-20).join("\n");
-                    } catch (e: any) {
-                      recentLogs = `Error reading status file: ${e.message}`;
+                  // Start the agent loop asynchronously in the background
+                  runCustomNvidiaAgent(prompt, apiKey, selectedModel, logPath, (msg) => {
+                    if (clientWs.readyState === 1 /* OPEN */) {
+                      clientWs.send(JSON.stringify({
+                        action: "agent_log",
+                        agentId,
+                        message: msg
+                      }));
                     }
-                  }
+                  }).then((summary) => {
+                    const agent = activeAgents.get(agentId);
+                    if (agent) {
+                      agent.running = false;
+                      agent.summary = summary;
+                    }
+                    if (clientWs.readyState === 1) {
+                      clientWs.send(JSON.stringify({
+                        action: "agent_end",
+                        agentId,
+                        success: true,
+                        summary
+                      }));
+                    }
+                    console.log(`[AGENT SUCCESS] Agent [${agentId}] finished. Summary: ${summary}`);
+                  }).catch((err) => {
+                    const agent = activeAgents.get(agentId);
+                    if (agent) {
+                      agent.running = false;
+                      agent.error = err.message;
+                    }
+                    if (clientWs.readyState === 1) {
+                      clientWs.send(JSON.stringify({
+                        action: "agent_end",
+                        agentId,
+                        success: false,
+                        error: err.message
+                      }));
+                    }
+                    console.error(`[AGENT ERROR] Agent [${agentId}] failed:`, err);
+                  });
+
+                  const spawnResult = `🤖 Successfully spawned autonomous developer coding agent [${agentId}] in the background using model "${selectedModel}". All progress logs are written to ${logPath}. Check progress using getCodingAgentStatus and pass agentId: "${agentId}". You can reply to the user now; the agent is running.`;
 
                   toolResponses.push({
                     id: call.id,
                     name: call.name,
                     response: {
-                      isRunning,
-                      agent: activeAgentName || "none",
-                      prompt: activeAgentPrompt || "none",
-                      durationSeconds: activeAgentStartTime ? Math.round((Date.now() - activeAgentStartTime) / 1000) : 0,
-                      recentLogs: recentLogs,
+                      status: "success",
+                      agentId,
+                      result: spawnResult
                     },
                   });
+                } else if (call.name === "getCodingAgentStatus") {
+                  const agentId = (call.args as any).agentId as string;
+                  logTurn("AGENT_STATUS", `Checking agent status: ${agentId || "all"}`);
+
+                  if (agentId) {
+                    const agent = activeAgents.get(agentId);
+                    if (!agent) {
+                      toolResponses.push({
+                        id: call.id,
+                        name: call.name,
+                        response: { error: `Coding agent session with ID "${agentId}" not found.` }
+                      });
+                    } else {
+                      let recentLogs = "No active logs found.";
+                      if (fs.existsSync(agent.logPath)) {
+                        try {
+                          const fullContent = fs.readFileSync(agent.logPath, "utf-8");
+                          const lines = fullContent.split("\n");
+                          recentLogs = lines.slice(-25).join("\n");
+                        } catch (e: any) {
+                          recentLogs = `Error reading status file: ${e.message}`;
+                        }
+                      }
+
+                      toolResponses.push({
+                        id: call.id,
+                        name: call.name,
+                        response: {
+                          agentId: agent.agentId,
+                          model: agent.model,
+                          prompt: agent.prompt,
+                          isRunning: agent.running,
+                          durationSeconds: Math.round((Date.now() - agent.startTime) / 1000),
+                          recentLogs,
+                          summary: agent.summary,
+                          error: agent.error
+                        },
+                      });
+                    }
+                  } else {
+                    // Return summary list of all agents
+                    const list = Array.from(activeAgents.values()).map(a => ({
+                      agentId: a.agentId,
+                      model: a.model,
+                      prompt: a.prompt,
+                      isRunning: a.running,
+                      durationSeconds: Math.round((Date.now() - a.startTime) / 1000),
+                      summary: a.summary,
+                      error: a.error
+                    }));
+
+                    toolResponses.push({
+                      id: call.id,
+                      name: call.name,
+                      response: {
+                        agentsCount: list.length,
+                        agents: list
+                      },
+                    });
+                  }
                 } else if (call.name === "openBrowser") {
                   const action = ((call.args as any).action as string) || "navigate";
                   const url = (call.args as any).url as string;
