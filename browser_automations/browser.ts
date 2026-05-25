@@ -91,7 +91,9 @@ export async function typeText(selector: string, text: string): Promise<string> 
   console.log(`[BROWSER] Typing text into selector ${selector}`);
   await page.waitForSelector(selector, { timeout: 6000 });
   
-  await page.click(selector, { clickCount: 3 });
+  await page.click(selector);
+  await page.click(selector);
+  await page.click(selector);
   await page.keyboard.press("Backspace");
   
   await page.type(selector, text);

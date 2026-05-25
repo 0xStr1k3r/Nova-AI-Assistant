@@ -38,6 +38,20 @@ import {
   clickNextButton as bClickNext,
   adjustSystemVolume as bSystemVolume
 } from "./browser_automations/browser";
+import {
+  getSystemInfo,
+  captureScreenshot as guiCaptureScreenshot,
+  getScreenshotBase64,
+  getWindowList,
+  getActiveWindowInfo,
+  focusWindowAction,
+  closeWindowAction,
+  minimizeWindowAction,
+  maximizeWindowAction,
+  moveMouseAction,
+  typeTextAction,
+  pressKeyAction,
+} from "./src/server/gui-automation";
 
 const execAsync = util.promisify(exec);
 
@@ -638,6 +652,103 @@ ${recentConversationsContext}`;
           required: [],
         },
       });
+
+      // Desktop GUI Automation Tools (available in system access modes)
+      functionDeclarations.push({
+        name: "desktopScreenshot",
+        description: "Captures a full desktop screenshot across X11 and Wayland displays. Returns the screenshot file path and can also provide base64 encoding for vision analysis. Use this to see the entire desktop and all open applications.",
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+           getBase64: {
+             type: Type.BOOLEAN,
+             description: "If true, returns base64-encoded screenshot for vision analysis. If false, returns file path only. Defaults to false.",
+           },
+          },
+          required: [],
+        },
+      });
+
+      functionDeclarations.push({
+        name: "analyzeDesktop",
+        description: "Captures a desktop screenshot and analyzes it using Gemini 2.0 Flash vision to describe what's visible on screen. Supports custom analysis prompts for specific UI questions.",
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+           prompt: {
+             type: Type.STRING,
+             description: "Custom prompt for analyzing the desktop screenshot (e.g., 'What windows are currently open?' or 'Describe the taskbar').",
+           },
+          },
+          required: [],
+        },
+      });
+
+      functionDeclarations.push({
+        name: "windowControl",
+        description: "Controls desktop windows: list all windows, focus a window, close, minimize, or maximize. Works across X11 and Wayland on GNOME, KDE, XFCE, and Hyprland.",
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+           action: {
+             type: Type.STRING,
+             enum: ["list", "focus", "close", "minimize", "maximize", "getActive"],
+             description: "The window control action to perform.",
+           },
+           windowTitle: {
+             type: Type.STRING,
+             description: "The window title or name to target (required for all actions except 'list' and 'getActive').",
+           },
+          },
+          required: ["action"],
+        },
+      });
+
+      functionDeclarations.push({
+        name: "desktopInput",
+        description: "Sends keyboard and mouse input to the desktop (not just browser). Type text, press keys, or move the mouse to control desktop applications.",
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+           action: {
+             type: Type.STRING,
+             enum: ["type", "pressKey", "moveMouse"],
+             description: "The input action to perform.",
+           },
+           text: {
+             type: Type.STRING,
+             description: "Text to type. Required if action is 'type'.",
+           },
+           key: {
+             type: Type.STRING,
+             description: "Keyboard key to press (e.g., 'Return', 'Tab', 'Escape', 'ctrl+c'). Required if action is 'pressKey'.",
+           },
+           x: {
+             type: Type.INTEGER,
+             description: "X coordinate for mouse movement. Required if action is 'moveMouse'.",
+           },
+           y: {
+             type: Type.INTEGER,
+             description: "Y coordinate for mouse movement. Required if action is 'moveMouse'.",
+           },
+           click: {
+             type: Type.BOOLEAN,
+             description: "If true, clicks after moving mouse. Optional, only used with moveMouse.",
+           },
+          },
+          required: ["action"],
+        },
+      });
+
+      functionDeclarations.push({
+        name: "getDisplayInfo",
+        description: "Returns information about the display environment: protocol (X11 or Wayland), desktop environment (GNOME, KDE, XFCE, Hyprland, etc.), and display variables.",
+        parameters: {
+          type: Type.OBJECT,
+          properties: {},
+          required: [],
+        },
+      });
     }
 
     try {
@@ -996,6 +1107,200 @@ SUCCESS: ${code === 0}
                       success,
                       result: resultStr,
                     },
+                  });
+                } else if (call.name === "desktopScreenshot") {
+                  const getBase64 = (call.args as any).getBase64 as boolean;
+                  logTurn("GUI", `Desktop screenshot (base64=${getBase64})`);
+                  
+                  let resultStr = "";
+                  try {
+                    if (getBase64) {
+                      const result = await getScreenshotBase64();
+                      if (result.success && result.data?.base64) {
+                        resultStr = `Screenshot captured. Dimensions: ${result.data.dimensions?.width}x${result.data.dimensions?.height}. Base64 data ready for vision analysis.`;
+                      } else {
+                        throw new Error(result.error || "Screenshot failed");
+                      }
+                    } else {
+                      const result = await guiCaptureScreenshot();
+                      if (result.success) {
+                        resultStr = `Screenshot saved to: ${result.data?.filePath}. Method: ${result.data?.method}. Dimensions: ${result.data?.dimensions?.width}x${result.data?.dimensions?.height}`;
+                      } else {
+                        throw new Error(result.error || "Screenshot failed");
+                      }
+                    }
+                    console.log(`[GUI OK] ${resultStr}`);
+                  } catch (error: any) {
+                    resultStr = `ERROR: ${error.message}`;
+                    console.error(`[GUI FAIL] Desktop screenshot:`, error.message);
+                  }
+
+                  toolResponses.push({
+                    id: call.id,
+                    name: call.name,
+                    response: { result: resultStr },
+                  });
+                } else if (call.name === "analyzeDesktop") {
+                  const prompt = (call.args as any).prompt as string;
+                  logTurn("GUI", `Analyze desktop: ${prompt}`);
+
+                  let resultStr = "";
+                  try {
+                    const screenshotResult = await getScreenshotBase64();
+                    if (!screenshotResult.success || !screenshotResult.data?.base64) {
+                      throw new Error(screenshotResult.error || "Failed to capture screenshot");
+                    }
+
+                    const analysisPrompt = prompt || "Describe what you see on this desktop screenshot, including all visible windows, applications, and UI elements.";
+                    const visionRes = await ai.models.generateContent({
+                      model: MODEL_MEMORY,
+                      contents: [
+                        {
+                          role: "user",
+                          parts: [
+                            {
+                              inlineData: {
+                                data: screenshotResult.data.base64,
+                                mimeType: "image/png"
+                              }
+                            },
+                            {
+                              text: analysisPrompt
+                            }
+                          ]
+                        }
+                      ]
+                    });
+
+                    resultStr = visionRes.candidates?.[0]?.content?.parts?.[0]?.text || "Failed to analyze desktop.";
+                    console.log(`[GUI OK] Desktop analysis complete`);
+                  } catch (error: any) {
+                    resultStr = `ERROR: ${error.message}`;
+                    console.error(`[GUI FAIL] Desktop analysis:`, error.message);
+                  }
+
+                  toolResponses.push({
+                    id: call.id,
+                    name: call.name,
+                    response: { result: resultStr },
+                  });
+                } else if (call.name === "windowControl") {
+                  const action = (call.args as any).action as string;
+                  const windowTitle = (call.args as any).windowTitle as string;
+                  logTurn("GUI", `Window control: ${action} ${windowTitle || ""}`);
+
+                  let resultStr = "";
+                  try {
+                    switch (action) {
+                      case "list": {
+                        const result = await getWindowList();
+                        resultStr = result.success ? JSON.stringify(result.data?.windows, null, 2) : result.error || "Failed to list windows";
+                        break;
+                      }
+                      case "focus": {
+                        if (!windowTitle) throw new Error("Window title required for focus action");
+                        const result = await focusWindowAction(windowTitle);
+                        resultStr = result.message;
+                        break;
+                      }
+                      case "close": {
+                        if (!windowTitle) throw new Error("Window title required for close action");
+                        const result = await closeWindowAction(windowTitle);
+                        resultStr = result.message;
+                        break;
+                      }
+                      case "minimize": {
+                        if (!windowTitle) throw new Error("Window title required for minimize action");
+                        const result = await minimizeWindowAction(windowTitle);
+                        resultStr = result.message;
+                        break;
+                      }
+                      case "maximize": {
+                        if (!windowTitle) throw new Error("Window title required for maximize action");
+                        const result = await maximizeWindowAction(windowTitle);
+                        resultStr = result.message;
+                        break;
+                      }
+                      case "getActive": {
+                        const result = await getActiveWindowInfo();
+                        resultStr = result.success ? JSON.stringify(result.data?.window) : result.error || "No active window";
+                        break;
+                      }
+                      default:
+                        throw new Error(`Unknown window control action: ${action}`);
+                    }
+                    console.log(`[GUI OK] Window control: ${resultStr}`);
+                  } catch (error: any) {
+                    resultStr = `ERROR: ${error.message}`;
+                    console.error(`[GUI FAIL] Window control:`, error.message);
+                  }
+
+                  toolResponses.push({
+                    id: call.id,
+                    name: call.name,
+                    response: { result: resultStr },
+                  });
+                } else if (call.name === "desktopInput") {
+                  const action = (call.args as any).action as string;
+                  const text = (call.args as any).text as string;
+                  const key = (call.args as any).key as string;
+                  const x = (call.args as any).x as number;
+                  const y = (call.args as any).y as number;
+                  const click = (call.args as any).click as boolean;
+                  logTurn("GUI", `Desktop input: ${action}`);
+
+                  let resultStr = "";
+                  try {
+                    switch (action) {
+                      case "type": {
+                        if (!text) throw new Error("Text required for type action");
+                        const result = await typeTextAction(text);
+                        resultStr = result.message;
+                        break;
+                      }
+                      case "pressKey": {
+                        if (!key) throw new Error("Key required for pressKey action");
+                        const result = await pressKeyAction(key);
+                        resultStr = result.message;
+                        break;
+                      }
+                      case "moveMouse": {
+                        if (x === undefined || y === undefined) throw new Error("X and Y coordinates required for moveMouse action");
+                        const result = await moveMouseAction(x, y, click);
+                        resultStr = result.message;
+                        break;
+                      }
+                      default:
+                        throw new Error(`Unknown desktop input action: ${action}`);
+                    }
+                    console.log(`[GUI OK] Desktop input: ${resultStr}`);
+                  } catch (error: any) {
+                    resultStr = `ERROR: ${error.message}`;
+                    console.error(`[GUI FAIL] Desktop input:`, error.message);
+                  }
+
+                  toolResponses.push({
+                    id: call.id,
+                    name: call.name,
+                    response: { result: resultStr },
+                  });
+                } else if (call.name === "getDisplayInfo") {
+                  logTurn("GUI", "Get display info");
+
+                  let resultStr = "";
+                  try {
+                    const result = await getSystemInfo();
+                    resultStr = result.success ? JSON.stringify(result.data, null, 2) : result.error || "Failed to get display info";
+                    console.log(`[GUI OK] Display info retrieved`);
+                  } catch (error: any) {
+                    resultStr = `ERROR: ${error.message}`;
+                    console.error(`[GUI FAIL] Display info:`, error.message);
+                  }
+
+                  toolResponses.push({
+                    id: call.id,
+                    name: call.name,
+                    response: { result: resultStr },
                   });
                 } else if (call.name === "delegateComplexTask") {
                   const taskPrompt = (call.args as any).taskPrompt as string;
