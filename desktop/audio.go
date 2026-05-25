@@ -9,62 +9,58 @@ import (
 	"math"
 	"sync"
 	"time"
-	"unsafe"
 
 	"github.com/gordonklaus/portaudio"
 )
 
 const (
-	// Audio settings matching the Nova server (16kHz, 16-bit PCM, mono)
-	SampleRate   = 16000
-	Channels     = 1
-	FramesPerBuf = 1600 // 100ms per chunk
+	// Capture: 16kHz mono 16-bit PCM — what Gemini Live API expects
+	SampleRate      = 16000
+	Channels        = 1
+	FramesPerBuf    = 1600 // 100ms per chunk at 16kHz
 
-	// Playback at 24kHz because Google's Live API returns 24kHz audio
+	// Playback: 24kHz mono 16-bit PCM — what Gemini Live API returns
 	PlaybackSampleRate = 24000
-	PlaybackFrames     = 2400 // 100ms playback chunks
+	PlaybackFrames     = 2400 // 100ms playback chunks at 24kHz
 
-	// Wake word VAD settings
-	silenceThreshold  = 300  // RMS threshold below which we consider silence
-	wakeWindowSec     = 2.0  // seconds of audio to buffer for wake word detection
-	chunkDurationSec  = float64(FramesPerBuf) / float64(SampleRate)
+	// Voice activity detection thresholds
+	rmsActive   = 400  // RMS above this = voice is present
+	rmsSilence  = 250  // RMS below this counts as silence
 )
 
-// AudioEngine manages microphone capture and speaker playback via PortAudio
+// AudioEngine manages microphone capture and speaker playback via PortAudio.
 type AudioEngine struct {
 	mu sync.Mutex
 
-	// State
-	capturing   bool
-	playing     bool
-	listening   bool // whether we are actively streaming to Nova server
+	capturing bool
+	playing   bool
 
-	// Channels
 	captureStop  chan struct{}
 	playbackStop chan struct{}
-	playbackBuf  chan []int16 // incoming PCM from server queued for playback
+	// Buffered channel of raw PCM bytes ready to play.
+	// Using a large buffer avoids dropping bursts of server audio.
+	playbackBuf chan []byte
 
-	// Callbacks
-	onChunk    func(pcm []int16) // called with each captured 100ms chunk
-	onActivity func(active bool) // called when voice activity starts/stops
+	// Called with each 100 ms PCM chunk from the microphone.
+	onChunk func(pcm []int16)
 }
 
-// NewAudioEngine creates a new audio engine (call Init() before using)
-func NewAudioEngine(onChunk func([]int16), onActivity func(bool)) *AudioEngine {
+// NewAudioEngine initialises PortAudio and returns an engine.
+// Call Terminate() when done.
+func NewAudioEngine(onChunk func([]int16)) *AudioEngine {
 	portaudio.Initialize()
 	return &AudioEngine{
 		onChunk:     onChunk,
-		onActivity:  onActivity,
-		playbackBuf: make(chan []int16, 50),
+		playbackBuf: make(chan []byte, 100),
 	}
 }
 
-// Terminate cleans up PortAudio
+// Terminate releases PortAudio resources.
 func (a *AudioEngine) Terminate() {
 	portaudio.Terminate()
 }
 
-// StartCapture starts listening on the default microphone
+// StartCapture opens the default input device and calls onChunk for every frame.
 func (a *AudioEngine) StartCapture() error {
 	a.mu.Lock()
 	if a.capturing {
@@ -98,36 +94,31 @@ func (a *AudioEngine) StartCapture() error {
 			a.mu.Lock()
 			a.capturing = false
 			a.mu.Unlock()
-			log.Println("[AUDIO] Capture stopped")
+			log.Println("[AUDIO] Capture goroutine exited")
 		}()
-
 		for {
 			select {
 			case <-a.captureStop:
 				return
 			default:
 			}
-
 			if err := stream.Read(); err != nil {
 				log.Printf("[AUDIO] Capture read error: %v", err)
 				return
 			}
-
-			// Copy buffer to avoid race
 			chunk := make([]int16, len(buf))
 			copy(chunk, buf)
-
 			if a.onChunk != nil {
 				a.onChunk(chunk)
 			}
 		}
 	}()
 
-	log.Println("[AUDIO] Capture started at 16kHz mono")
+	log.Println("[AUDIO] Capture started — 16 kHz mono")
 	return nil
 }
 
-// StopCapture halts microphone capture
+// StopCapture signals the capture goroutine to stop.
 func (a *AudioEngine) StopCapture() {
 	a.mu.Lock()
 	stop := a.captureStop
@@ -141,7 +132,7 @@ func (a *AudioEngine) StopCapture() {
 	}
 }
 
-// StartPlayback starts the background goroutine that plays audio from the queue
+// StartPlayback starts a goroutine that drains playbackBuf through the speaker.
 func (a *AudioEngine) StartPlayback() error {
 	a.mu.Lock()
 	if a.playing {
@@ -175,46 +166,45 @@ func (a *AudioEngine) StartPlayback() error {
 			a.mu.Lock()
 			a.playing = false
 			a.mu.Unlock()
-			log.Println("[AUDIO] Playback stopped")
+			log.Println("[AUDIO] Playback goroutine exited")
 		}()
-
 		for {
 			select {
 			case <-a.playbackStop:
 				return
-			case chunk, ok := <-a.playbackBuf:
+			case raw, ok := <-a.playbackBuf:
 				if !ok {
 					return
 				}
-				// Fill output buffer, chunk by chunk
+				// Convert raw bytes → int16 samples
+				nSamples := len(raw) / 2
+				samples := make([]int16, nSamples)
+				for i := 0; i < nSamples; i++ {
+					samples[i] = int16(binary.LittleEndian.Uint16(raw[2*i : 2*i+2]))
+				}
+				// Write in PlaybackFrames-sized chunks
 				offset := 0
-				for offset < len(chunk) {
-					end := offset + PlaybackFrames
-					if end > len(chunk) {
-						// Partial final chunk - pad with zeros
-						copy(buf, chunk[offset:])
-						for i := len(chunk) - offset; i < PlaybackFrames; i++ {
-							buf[i] = 0
-						}
-						end = len(chunk)
-					} else {
-						copy(buf, chunk[offset:end])
+				for offset < len(samples) {
+					n := copy(buf, samples[offset:])
+					// Zero-pad if last partial chunk
+					for i := n; i < PlaybackFrames; i++ {
+						buf[i] = 0
 					}
-					offset = end
+					offset += n
 					if err := stream.Write(); err != nil {
-						log.Printf("[AUDIO] Playback write error: %v", err)
-						time.Sleep(5 * time.Millisecond)
+						// Non-fatal — the stream may have underflowed briefly
+						time.Sleep(2 * time.Millisecond)
 					}
 				}
 			}
 		}
 	}()
 
-	log.Println("[AUDIO] Playback started at 24kHz mono")
+	log.Println("[AUDIO] Playback started — 24 kHz mono")
 	return nil
 }
 
-// StopPlayback halts audio playback
+// StopPlayback signals the playback goroutine to stop.
 func (a *AudioEngine) StopPlayback() {
 	a.mu.Lock()
 	stop := a.playbackStop
@@ -228,23 +218,21 @@ func (a *AudioEngine) StopPlayback() {
 	}
 }
 
-// QueuePlayback enqueues raw PCM bytes (24kHz 16-bit LE signed) for playback
+// QueuePlayback enqueues raw 24 kHz 16-bit little-endian PCM bytes for playback.
 func (a *AudioEngine) QueuePlayback(raw []byte) {
 	if len(raw) < 2 {
 		return
 	}
-	samples := make([]int16, len(raw)/2)
-	for i := range samples {
-		samples[i] = int16(binary.LittleEndian.Uint16(raw[2*i : 2*i+2]))
-	}
+	cp := make([]byte, len(raw))
+	copy(cp, raw)
 	select {
-	case a.playbackBuf <- samples:
+	case a.playbackBuf <- cp:
 	default:
-		log.Println("[AUDIO] Playback buffer full, dropping chunk")
+		log.Println("[AUDIO] Playback buffer full — dropping chunk")
 	}
 }
 
-// ClearPlayback drains the playback buffer (used on interruption)
+// ClearPlayback drains the playback queue (used when Nova is interrupted).
 func (a *AudioEngine) ClearPlayback() {
 	for {
 		select {
@@ -255,7 +243,9 @@ func (a *AudioEngine) ClearPlayback() {
 	}
 }
 
-// RMS calculates the root-mean-square amplitude of a PCM chunk
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+// RMS returns the root-mean-square amplitude of a PCM buffer (higher = louder).
 func RMS(samples []int16) float64 {
 	if len(samples) == 0 {
 		return 0
@@ -268,7 +258,7 @@ func RMS(samples []int16) float64 {
 	return math.Sqrt(sum / float64(len(samples)))
 }
 
-// Int16ToBytes converts []int16 to little-endian []byte for sending to server
+// Int16ToBytes converts []int16 to little-endian []byte for the WebSocket wire format.
 func Int16ToBytes(samples []int16) []byte {
 	raw := make([]byte, len(samples)*2)
 	for i, s := range samples {
@@ -276,6 +266,3 @@ func Int16ToBytes(samples []int16) []byte {
 	}
 	return raw
 }
-
-// Dummy use of unsafe to suppress import error if CGo is disabled
-var _ = unsafe.Sizeof(0)
