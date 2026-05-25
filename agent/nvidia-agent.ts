@@ -5,6 +5,7 @@ import * as util from "util";
 
 const execAsync = util.promisify(exec);
 const PROJECT_ROOT = "/home/chiru/antigravity/Nexus-OS-Voice-Assistant";
+const ALLOWED_ROOT = "/home/chiru";
 
 // Dynamic task-based model selection from the fast NIM catalog
 export function selectBestModelForTask(prompt: string): string {
@@ -347,9 +348,9 @@ Available Tools:
       switch (action.name) {
         case "list_dir": {
           const relPath = action.args.path || ".";
-          const fullPath = path.resolve(PROJECT_ROOT, relPath);
-          if (!fullPath.startsWith(PROJECT_ROOT)) {
-            toolOutput = "ERROR: Access denied. Cannot list directories outside the project root.";
+          const fullPath = path.isAbsolute(relPath) ? relPath : path.resolve(PROJECT_ROOT, relPath);
+          if (!fullPath.startsWith(ALLOWED_ROOT)) {
+            toolOutput = "ERROR: Access denied. Cannot list directories outside the permitted home space.";
           } else if (!fs.existsSync(fullPath)) {
             toolOutput = `ERROR: Directory "${relPath}" does not exist.`;
           } else {
@@ -366,9 +367,9 @@ Available Tools:
         case "find_files": {
           const relPath = action.args.path || ".";
           const query = (action.args.query || "").toLowerCase();
-          const fullPath = path.resolve(PROJECT_ROOT, relPath);
-          if (!fullPath.startsWith(PROJECT_ROOT)) {
-            toolOutput = "ERROR: Access denied. Cannot search files outside the project root.";
+          const fullPath = path.isAbsolute(relPath) ? relPath : path.resolve(PROJECT_ROOT, relPath);
+          if (!fullPath.startsWith(ALLOWED_ROOT)) {
+            toolOutput = "ERROR: Access denied. Cannot search files outside the permitted home space.";
           } else if (!fs.existsSync(fullPath)) {
             toolOutput = `ERROR: Path "${relPath}" does not exist.`;
           } else {
@@ -398,9 +399,9 @@ Available Tools:
         case "search_grep": {
           const relPath = action.args.path || ".";
           const query = action.args.query;
-          const fullPath = path.resolve(PROJECT_ROOT, relPath);
-          if (!fullPath.startsWith(PROJECT_ROOT)) {
-            toolOutput = "ERROR: Access denied. Cannot search directories outside the project root.";
+          const fullPath = path.isAbsolute(relPath) ? relPath : path.resolve(PROJECT_ROOT, relPath);
+          if (!fullPath.startsWith(ALLOWED_ROOT)) {
+            toolOutput = "ERROR: Access denied. Cannot search directories outside the permitted home space.";
           } else if (!fs.existsSync(fullPath)) {
             toolOutput = `ERROR: Path "${relPath}" does not exist.`;
           } else if (!query) {
@@ -440,9 +441,9 @@ Available Tools:
 
         case "read_file": {
           const relPath = action.args.path;
-          const fullPath = path.resolve(PROJECT_ROOT, relPath);
-          if (!fullPath.startsWith(PROJECT_ROOT)) {
-            toolOutput = "ERROR: Access denied. Cannot read files outside the project root.";
+          const fullPath = path.isAbsolute(relPath) ? relPath : path.resolve(PROJECT_ROOT, relPath);
+          if (!fullPath.startsWith(ALLOWED_ROOT)) {
+            toolOutput = "ERROR: Access denied. Cannot read files outside the permitted home space.";
           } else if (!fs.existsSync(fullPath)) {
             toolOutput = `ERROR: File "${relPath}" does not exist.`;
           } else {
@@ -455,9 +456,9 @@ Available Tools:
         case "write_file": {
           const relPath = action.args.path;
           const content = action.args.content || "";
-          const fullPath = path.resolve(PROJECT_ROOT, relPath);
-          if (!fullPath.startsWith(PROJECT_ROOT)) {
-            toolOutput = "ERROR: Access denied. Cannot write files outside the project root.";
+          const fullPath = path.isAbsolute(relPath) ? relPath : path.resolve(PROJECT_ROOT, relPath);
+          if (!fullPath.startsWith(ALLOWED_ROOT)) {
+            toolOutput = "ERROR: Access denied. Cannot write files outside the permitted home space.";
           } else {
             fs.mkdirSync(path.dirname(fullPath), { recursive: true });
             fs.writeFileSync(fullPath, content, "utf-8");
@@ -470,9 +471,9 @@ Available Tools:
           const relPath = action.args.path;
           const target = action.args.targetContent;
           const replacement = action.args.replacementContent;
-          const fullPath = path.resolve(PROJECT_ROOT, relPath);
-          if (!fullPath.startsWith(PROJECT_ROOT)) {
-            toolOutput = "ERROR: Access denied. Cannot edit files outside the project root.";
+          const fullPath = path.isAbsolute(relPath) ? relPath : path.resolve(PROJECT_ROOT, relPath);
+          if (!fullPath.startsWith(ALLOWED_ROOT)) {
+            toolOutput = "ERROR: Access denied. Cannot edit files outside the permitted home space.";
           } else if (!fs.existsSync(fullPath)) {
             toolOutput = `ERROR: File "${relPath}" does not exist.`;
           } else if (target === undefined || replacement === undefined) {
