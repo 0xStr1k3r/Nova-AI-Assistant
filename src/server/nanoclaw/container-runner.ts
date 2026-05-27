@@ -25,10 +25,32 @@ export async function buildAgentImage(dockerfilePath = './src/server/nanoclaw/Do
   return stdout;
 }
 
-export async function runAgentContainer(options: RunOptions) {
+export async function runAgentContainer(options: RunOptions & { agentGroupId?: string }) {
   const tag = options.imageTag || 'nova-agent:latest';
   const name = options.containerName || `nova-agent-${Date.now()}`;
-  const mounts = (options.mounts || [])
+
+  // If agentGroupId provided, auto-init workspace and mounts
+  let finalMounts = options.mounts || [];
+  if (options.agentGroupId) {
+    try {
+      const { initWorkspace, getContainerMountsForAgent } = await import('./workspace-manager');
+      const { injectCredentialsToEnv } = await import('./onecli-vault');
+
+      const ws = await initWorkspace(options.agentGroupId);
+      const agentMounts = getContainerMountsForAgent(ws);
+      finalMounts = [...finalMounts, ...agentMounts];
+
+      // Inject credentials into env if available
+      options.env = options.env || {};
+      await injectCredentialsToEnv(options.env, ['GEMINI_API_KEY', 'OPENROUTER_API_KEY', 'GROQ_API_KEY', 'NIM_API_KEY']);
+
+      console.log(`[CONTAINER] Workspace prepared for agentGroup=${options.agentGroupId} at ${ws.workspacePath}`);
+    } catch (err) {
+      console.warn('[CONTAINER] Failed to prepare workspace:', err);
+    }
+  }
+
+  const mounts = (finalMounts || [])
     .map(m => `-v ${m.hostPath}:${m.containerPath}${m.readonly ? ':ro' : ''}`)
     .join(' ');
   const envs = Object.entries(options.env || {})

@@ -1,0 +1,19 @@
+version: '3.8'
+services:
+  nova-agent:
+    build:
+      context: .
+      dockerfile: src/server/nanoclaw/Dockerfile.agent
+    image: nova-agent:latest
+    container_name: nova-agent
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - AGENT_GROUP_ID=default
+    volumes:
+      - ./data/agents:/var/lib/nova/agents:rw
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
