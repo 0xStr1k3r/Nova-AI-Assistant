@@ -1,0 +1,20 @@
+# Lightweight Nova Agent Dockerfile (alpine, minimal)
+FROM node:18-alpine
+
+# Create app directory
+WORKDIR /usr/src/app
+
+# Install minimal dependencies
+COPY package.json package-lock.json* ./
+RUN npm ci --only=production --silent || true
+
+# Copy source
+COPY dist ./dist
+
+# Optional: non-root user
+RUN addgroup -S nova && adduser -S -G nova nova
+USER nova
+
+ENV NODE_ENV=production
+
+CMD ["node", "dist/server.cjs"]
