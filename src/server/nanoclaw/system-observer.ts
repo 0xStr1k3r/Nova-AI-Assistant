@@ -46,14 +46,29 @@ class SystemObserver extends EventEmitter {
         // desktop-mapper not available; skip
       }
 
-      // Calendar placeholder: emit 'calendar' event if upcoming meeting
+      // Calendar adapter: poll workspace calendar.json and emit upcoming
       try {
-        // TODO: integrate Google Calendar or local calendar adapters
-        // For now, emit heartbeat
-        this.emit('heartbeat', { ts: Date.now() });
+        const CalendarAdapter = (await import('./adapters/calendar')).default;
+        const cal = new CalendarAdapter(process.env.AGENT_GROUP_ID || 'default', 60_000);
+        cal.on('upcoming', (ev: any) => this.emit('calendarEvent', ev));
+        // run one-off poll to surface events quickly
+        await cal.pollOnce();
       } catch (e) {
-        // ignore
+        console.warn('[OBSERVER] Calendar adapter not available:', e.message || e);
       }
+
+      // Email adapter: poll workspace inbox.json and emit unread
+      try {
+        const EmailAdapter = (await import('./adapters/email')).default;
+        const mail = new EmailAdapter(process.env.AGENT_GROUP_ID || 'default', 60_000);
+        mail.on('unread', (m: any) => this.emit('unreadEmail', m));
+        await mail.pollOnce();
+      } catch (e) {
+        console.warn('[OBSERVER] Email adapter not available:', e.message || e);
+      }
+
+      // Heartbeat emit
+      this.emit('heartbeat', { ts: Date.now() });
     } catch (err) {
       console.error('[OBSERVER] Tick failed:', err);
     }
