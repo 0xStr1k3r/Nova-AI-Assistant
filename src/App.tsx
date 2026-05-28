@@ -51,6 +51,8 @@ export default function App() {
   const standbyAudioBufferRef  = useRef<Float32Array>(new Float32Array(STANDBY_BUFFER_SIZE));
   const standbyBufferIdxRef    = useRef<number>(0);
   const verifyingVoiceRef      = useRef<boolean>(false);
+  const [wakeWordPaused, setWakeWordPaused] = useState(false);
+  const lastConfigRef                       = useRef<any>(null);
 
   const isConnected          = status === "active";
   const isConnecting         = status === "connecting";
@@ -96,8 +98,25 @@ export default function App() {
   }, [isConnected]);
 
   useEffect(() => {
-    if (hasInteracted && config && status === "idle") startWakeWordListening();
-  }, [hasInteracted, config]);
+    if (hasInteracted && config) {
+      const shouldListen = view === "home" && (status === "idle" || status === "wake_listening") && !wakeWordPaused;
+      if (shouldListen) {
+        const configChanged = lastConfigRef.current !== config;
+        lastConfigRef.current = config;
+
+        if (!isWakeListeningRef.current) {
+          startWakeWordListening();
+        } else if (configChanged) {
+          stopWakeWordListening();
+          startWakeWordListening();
+        }
+      } else {
+        if (isWakeListeningRef.current) {
+          stopWakeWordListening();
+        }
+      }
+    }
+  }, [hasInteracted, config, view, status, wakeWordPaused]);
 
   const startStandbyAudioAnalysis = async () => {
     try {
@@ -162,7 +181,7 @@ export default function App() {
               let matched = false;
               for (const p of configRef.current.userVoiceProfiles) {
                 if (!p.embedding?.length) continue;
-                if (verifier.compareEmbeddings(res.embedding, new Float32Array(p.embedding)) >= 0.65) { matched = true; break; }
+                 if (verifier.compareEmbeddings(res.embedding, new Float32Array(p.embedding)) >= 0.55) { matched = true; break; }
               }
               verifyingVoiceRef.current = false;
               if (!matched) { addLog("Wake word heard — speaker not matched.", "info"); return; }
@@ -190,8 +209,15 @@ export default function App() {
   };
 
   const toggleWakeWord = () => {
-    if (isWakeWordListening) { stopWakeWordListening(); setStatus("idle"); addLog("Wake word paused.", "info"); }
-    else startWakeWordListening();
+    if (isWakeWordListening) {
+      setWakeWordPaused(true);
+      stopWakeWordListening();
+      setStatus("idle");
+      addLog("Wake word paused.", "info");
+    } else {
+      setWakeWordPaused(false);
+      startWakeWordListening();
+    }
   };
 
   const connect = async () => {
@@ -253,7 +279,7 @@ export default function App() {
     wsRef.current?.close();
     processorRef.current = null; mediaStreamRef.current = null;
     audioCtxRef.current  = null; wsRef.current          = null; streamerRef.current = null;
-    setTimeout(() => { if (configRef.current?.wakeWord) startWakeWordListening(); else setStatus("idle"); }, 1200);
+    setTimeout(() => { setStatus("idle"); }, 1200);
   };
 
   const initSystem = () => { setHasInteracted(true); localStorage.setItem("nova_engaged", "true"); };
