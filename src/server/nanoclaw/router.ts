@@ -5,7 +5,9 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import * as sqlite3 from 'sqlite3';
+import sqlite3Pkg from 'sqlite3';
+import * as fs from 'fs';
+import * as path from 'path';
 import type {
   Message,
   MessageChannel,
@@ -16,14 +18,20 @@ import type {
   DeliveryTask,
 } from './types';
 
+const sqlite3 = sqlite3Pkg.verbose();
+
 class ChannelRouter {
-  private db: sqlite3.Database;
+  private db: sqlite3Pkg.Database;
   private inboundQueue: Message[] = [];
   private outboundQueue: DeliveryTask[] = [];
   private activeAgentGroups: Map<string, AgentGroup> = new Map();
 
   constructor(dbPath: string = '~/.config/nova-nanoclaw/router.db') {
     const expandedPath = dbPath.replace('~', process.env.HOME || '');
+    const dir = path.dirname(expandedPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
     this.db = new sqlite3.Database(expandedPath);
     this.initializeSchema();
   }
