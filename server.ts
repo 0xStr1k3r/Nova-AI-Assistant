@@ -88,6 +88,13 @@ import {
 } from "./src/server/gui-automation";
 import { runCustomNvidiaAgent, runOrchestratedNvidiaAgent, cancelledAgents } from "./agent";
 
+// Phase 4: Agent Control Panel API modules
+import { setupAgentAPI } from "./src/server/agent-api";
+import { setupTaskAPI } from "./src/server/task-api";
+import { setupChannelAPI } from "./src/server/channel-api";
+import { setupObserverAPI } from "./src/server/observer-api";
+import setupWebSocketHandler from "./src/server/websocket-handler";
+
 const execAsync = util.promisify(exec);
 
 // Background agent execution state
@@ -447,6 +454,16 @@ async function startServer() {
 
   const server = http.createServer(app);
   const wss = new WebSocketServer({ server, path: "/live" });
+
+  // ─── Phase 4: Agent Control Panel API Setup ───────────────────────────
+  console.log('[SERVER] Setting up Phase 4 Agent Control APIs...');
+  setupAgentAPI(app);
+  setupTaskAPI(app);
+  setupChannelAPI(app);
+  setupObserverAPI(app);
+  setupWebSocketHandler(wss);
+  console.log('[SERVER] Phase 4 APIs ready');
+  // ───────────────────────────────────────────────────────────────────────
 
   const ai = new GoogleGenAI({
     apiKey: process.env.GEMINI_API_KEY,

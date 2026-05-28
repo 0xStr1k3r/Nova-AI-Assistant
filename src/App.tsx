@@ -17,6 +17,12 @@ import OrbPanel from "./components/OrbPanel";
 import ActivityLog from "./components/ActivityLog";
 import SystemStats from "./components/SystemStats";
 
+// Phase 4: Agent Control Panel Components
+import AgentControl from "./components/AgentControl";
+import TaskMonitor from "./components/TaskMonitor";
+import ChannelStatus from "./components/ChannelStatus";
+import ObserverPanel from "./components/ObserverPanel";
+
 type AppStatus = "idle" | "wake_listening" | "connecting" | "active";
 
 export default function App() {
@@ -27,6 +33,8 @@ export default function App() {
   const [hasInteracted, setHasInteracted] = useState(false);
   const [lastCommand, setLastCommand] = useState("");
   const [sessionTime, setSessionTime] = useState(0);
+  const [showAgentPanel, setShowAgentPanel] = useState(false);
+  const [agentPanelTab, setAgentPanelTab] = useState<"agents" | "tasks" | "channels" | "observer">("agents");
 
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -521,7 +529,74 @@ export default function App() {
               voiceMode={voiceMode}
             />
           </div>
+
+          {/* Phase 4: Agent Control Panel - Collapsible Sidebar */}
+          <motion.div
+            className="lg:col-span-2 flex flex-col gap-4 min-h-0"
+            initial={{ opacity: showAgentPanel ? 1 : 0, width: showAgentPanel ? "100%" : 0 }}
+            animate={{ opacity: showAgentPanel ? 1 : 0, width: showAgentPanel ? "100%" : 0 }}
+            exit={{ opacity: 0, width: 0 }}
+            transition={{ duration: 0.3 }}
+            style={{ overflow: "hidden" }}
+          >
+            {showAgentPanel && (
+              <div className="flex flex-col gap-4 min-h-0 flex-1">
+                {/* Tab Navigation */}
+                <div
+                  className="flex gap-2 rounded-lg p-2"
+                  style={{ background: "rgba(255,255,255,0.03)" }}
+                >
+                  {(["agents", "tasks", "channels", "observer"] as const).map((tab) => (
+                    <button
+                      key={tab}
+                      onClick={() => setAgentPanelTab(tab)}
+                      className={`flex-1 px-3 py-2 rounded text-xs font-medium transition-all ${
+                        agentPanelTab === tab
+                          ? "bg-violet-600 text-white"
+                          : "text-slate-400 hover:text-slate-300"
+                      }`}
+                    >
+                      {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Tab Content */}
+                <div className="flex-1 min-h-0 overflow-y-auto">
+                  {agentPanelTab === "agents" && (
+                    <AgentControl compact={false} />
+                  )}
+                  {agentPanelTab === "tasks" && (
+                    <TaskMonitor compact={false} />
+                  )}
+                  {agentPanelTab === "channels" && (
+                    <ChannelStatus compact={false} />
+                  )}
+                  {agentPanelTab === "observer" && (
+                    <ObserverPanel compact={false} />
+                  )}
+                </div>
+              </div>
+            )}
+          </motion.div>
         </div>
+
+        {/* Toggle Agent Panel Button - Fixed Position */}
+        <motion.button
+          onClick={() => setShowAgentPanel(!showAgentPanel)}
+          className="fixed bottom-8 right-8 z-40 w-12 h-12 rounded-full bg-violet-600 hover:bg-violet-700 text-white shadow-lg flex items-center justify-center transition-all"
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.95 }}
+          title={showAgentPanel ? "Hide Agent Panel" : "Show Agent Panel"}
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            {showAgentPanel ? (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            ) : (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.5 1.5H3.75A2.25 2.25 0 001.5 3.75v16.5A2.25 2.25 0 003.75 22.5h16.5a2.25 2.25 0 002.25-2.25V13.5m-21-6h18m-9 9v6" />
+            )}
+          </svg>
+        </motion.button>
 
         <div
           className="relative z-20 px-6 py-3 flex items-center justify-between shrink-0"

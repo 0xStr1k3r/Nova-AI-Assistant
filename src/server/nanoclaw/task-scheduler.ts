@@ -6,7 +6,7 @@
 
 import fs from 'fs/promises';
 import path from 'path';
-import { getWorkspacePath } from '../workspace-manager';
+import { getWorkspacePath } from './workspace-manager';
 import { EventEmitter } from 'events';
 
 export interface ScheduledTask {
