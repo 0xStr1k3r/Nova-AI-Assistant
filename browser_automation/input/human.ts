@@ -46,16 +46,49 @@ async function moveMouseSmooth(to: Point, jitterAmount = DEFAULT_MOVE_JITTER) {
 
 async function getElementCenter(selector: string): Promise<Point> {
   const { page } = await getBrowserAndPage();
-  await page.waitForSelector(selector, { timeout: 6000 });
-  const handle = await page.$(selector);
-  const box = handle ? await handle.boundingBox() : null;
-  if (!box) {
-    throw new Error(`Unable to compute bounding box for selector "${selector}".`);
+  const frameSplit = selector.split(" >> ");
+  const iframeSelector = frameSplit.length > 1 ? frameSplit[0].trim() : null;
+  const targetSelector = frameSplit.length > 1 ? frameSplit.slice(1).join(" >> ").trim() : selector.trim();
+
+  const context: any = iframeSelector
+    ? (async () => {
+        await page.waitForSelector(iframeSelector, { timeout: 6000 });
+        const frameHandle = await page.$(iframeSelector);
+        if (!frameHandle) throw new Error(`Iframe not found: "${iframeSelector}"`);
+        const frame = await frameHandle.contentFrame();
+        if (!frame) throw new Error(`Unable to access iframe context: "${iframeSelector}"`);
+        return frame;
+      })()
+    : Promise.resolve(page);
+
+  const frameOrPage: any = await context;
+  const chain = targetSelector.split(" >>> ").map((part) => part.trim()).filter(Boolean);
+
+  if (chain.length <= 1) {
+    await frameOrPage.waitForSelector(targetSelector, { timeout: 6000 });
+    const handle = await frameOrPage.$(targetSelector);
+    const box = handle ? await handle.boundingBox() : null;
+    if (!box) throw new Error(`Unable to compute bounding box for selector "${selector}".`);
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
   }
-  return {
-    x: box.x + box.width / 2,
-    y: box.y + box.height / 2,
-  };
+
+  const rect = await frameOrPage.evaluate((parts: string[]) => {
+    let current: Element | null = document.querySelector(parts[0]);
+    if (!current) return null;
+    for (let i = 1; i < parts.length; i++) {
+      const root = (current as any).shadowRoot;
+      if (!root) return null;
+      current = root.querySelector(parts[i]);
+      if (!current) return null;
+    }
+    const r = current.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2, width: r.width, height: r.height };
+  }, chain);
+
+  if (!rect) {
+    throw new Error(`Shadow selector not found: "${targetSelector}"`);
+  }
+  return { x: rect.x, y: rect.y };
 }
 
 export async function moveMouseTo(x: number, y: number): Promise<void> {
@@ -105,19 +138,19 @@ export async function doubleClickElement(selector: string): Promise<string> {
 }
 
 export async function hoverElement(selector: string): Promise<string> {
-  const { page } = await getBrowserAndPage();
-  await page.waitForSelector(selector, { timeout: 6000 });
-  await page.hover(selector);
+  const center = await getElementCenter(selector);
+  await moveMouseSmooth(center);
   return `Successfully hovered cursor over element matching: "${selector}"`;
 }
 
 export async function typeText(selector: string, text: string): Promise<string> {
   const { page } = await getBrowserAndPage();
   console.log(`[BROWSER] Typing text into selector ${selector}`);
-  await page.waitForSelector(selector, { timeout: 6000 });
-  await page.click(selector);
-  await page.click(selector);
-  await page.click(selector);
+  const center = await getElementCenter(selector);
+  await moveMouseSmooth(center);
+  await page.mouse.click(center.x, center.y);
+  await page.mouse.click(center.x, center.y);
+  await page.mouse.click(center.x, center.y);
   await page.keyboard.press("Backspace");
 
   for (const char of text) {

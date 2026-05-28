@@ -11,6 +11,7 @@ export interface Agent {
   messageQueueDepth: number;
   tasksEnabled: number;
   tasksDisabled: number;
+  containerCount?: number;
   lastActivity: number;
   uptime: number;
 }

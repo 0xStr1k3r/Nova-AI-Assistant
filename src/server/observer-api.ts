@@ -90,12 +90,13 @@ try {
 export const getObserverState = async (req: Request, res: Response) => {
   try {
     const observer = getSystemObserver();
+    const stateInfo = observer.getState();
 
     const state: ObserverState = {
       observerId: 'system-observer-1',
-      isRunning: observer['running'],
-      pollIntervalMs: observer['pollIntervalMs'] || 30000,
-      lastTick: Date.now(),
+      isRunning: stateInfo.running,
+      pollIntervalMs: stateInfo.pollIntervalMs || 30000,
+      lastTick: stateInfo.lastTickAt || Date.now(),
       eventCount: eventBuffer.size(),
       recentEvents: eventBuffer.getRecent(10),
     };

@@ -9,6 +9,7 @@ import { getOrchestrator } from './nanoclaw/orchestrator';
 import { getRouter } from './nanoclaw/router';
 import { getTaskScheduler } from './nanoclaw/task-scheduler';
 import { getSystemObserver } from './nanoclaw/system-observer';
+import { listAgentContainers } from './nanoclaw/container-runner';
 
 // ============ Type Definitions ============
 
@@ -18,6 +19,7 @@ export interface AgentStatus {
   messageQueueDepth: number;
   tasksEnabled: number;
   tasksDisabled: number;
+  containerCount: number;
   lastActivity: number;
   uptime: number;
 }
@@ -42,6 +44,8 @@ async function getAgentStatus(agentGroupId: string): Promise<AgentStatus> {
     const queueDepth = await router.getPendingMessageCount();
     const tasksEnabled = tasks.filter(t => t.enabled).length;
     const tasksDisabled = tasks.filter(t => !t.enabled).length;
+    const containerRaw = await listAgentContainers().catch(() => '');
+    const containerCount = containerRaw ? containerRaw.split('\n').filter(Boolean).length : 0;
 
     return {
       agentGroupId,
@@ -49,6 +53,7 @@ async function getAgentStatus(agentGroupId: string): Promise<AgentStatus> {
       messageQueueDepth: queueDepth,
       tasksEnabled,
       tasksDisabled,
+      containerCount,
       lastActivity: Date.now(),
       uptime: process.uptime(),
     };
@@ -60,6 +65,7 @@ async function getAgentStatus(agentGroupId: string): Promise<AgentStatus> {
       messageQueueDepth: 0,
       tasksEnabled: 0,
       tasksDisabled: 0,
+      containerCount: 0,
       lastActivity: 0,
       uptime: 0,
     };

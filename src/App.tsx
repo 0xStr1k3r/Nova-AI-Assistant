@@ -22,6 +22,7 @@ import AgentControl from "./components/AgentControl";
 import TaskMonitor from "./components/TaskMonitor";
 import ChannelStatus from "./components/ChannelStatus";
 import ObserverPanel from "./components/ObserverPanel";
+import WorkflowDesigner from "./components/WorkflowDesigner";
 
 type AppStatus = "idle" | "wake_listening" | "connecting" | "active";
 
@@ -34,7 +35,7 @@ export default function App() {
   const [lastCommand, setLastCommand] = useState("");
   const [sessionTime, setSessionTime] = useState(0);
   const [showAgentPanel, setShowAgentPanel] = useState(false);
-  const [agentPanelTab, setAgentPanelTab] = useState<"agents" | "tasks" | "channels" | "observer">("agents");
+  const [agentPanelTab, setAgentPanelTab] = useState<"agents" | "tasks" | "channels" | "observer" | "workflows">("agents");
 
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -546,7 +547,7 @@ export default function App() {
                   className="flex gap-2 rounded-lg p-2"
                   style={{ background: "rgba(255,255,255,0.03)" }}
                 >
-                  {(["agents", "tasks", "channels", "observer"] as const).map((tab) => (
+                  {(["agents", "tasks", "channels", "observer", "workflows"] as const).map((tab) => (
                     <button
                       key={tab}
                       onClick={() => setAgentPanelTab(tab)}
@@ -574,6 +575,9 @@ export default function App() {
                   )}
                   {agentPanelTab === "observer" && (
                     <ObserverPanel compact={false} />
+                  )}
+                  {agentPanelTab === "workflows" && (
+                    <WorkflowDesigner />
                   )}
                 </div>
               </div>

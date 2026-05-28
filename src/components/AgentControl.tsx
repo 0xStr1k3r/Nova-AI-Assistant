@@ -74,7 +74,7 @@ export default function AgentControl({ compact = false, onAgentSelect }: AgentCo
               </div>
 
               {!compact && (
-                <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-gray-800 text-xs">
+                <div className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-gray-800 text-xs">
                   <div>
                     <p className="text-gray-500">Queue</p>
                     <p className="text-white font-medium">{agent.messageQueueDepth}</p>
@@ -84,6 +84,10 @@ export default function AgentControl({ compact = false, onAgentSelect }: AgentCo
                     <p className="text-white font-medium">
                       {agent.tasksEnabled}/{agent.tasksEnabled + agent.tasksDisabled}
                     </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">Containers</p>
+                    <p className="text-white font-medium">{agent.containerCount ?? 0}</p>
                   </div>
                 </div>
               )}

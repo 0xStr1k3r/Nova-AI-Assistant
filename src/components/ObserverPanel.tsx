@@ -14,7 +14,7 @@ interface ObserverPanelProps {
 }
 
 export default function ObserverPanel({ compact = false, maxEvents = 20 }: ObserverPanelProps) {
-  const { state, events, error, fetchEvents, clearEvents } = useObserverAPI();
+  const { state, events, error, fetchEvents, clearEvents, startObserver, stopObserver } = useObserverAPI();
 
   useEffect(() => {
     fetchEvents(maxEvents);
@@ -60,12 +60,12 @@ export default function ObserverPanel({ compact = false, maxEvents = 20 }: Obser
 
       <div className="flex gap-2 mb-2">
         {state && !state.isRunning && (
-          <button className="text-xs px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded">
+          <button onClick={startObserver} className="text-xs px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded">
             Start Observer
           </button>
         )}
         {state?.isRunning && (
-          <button className="text-xs px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded">
+          <button onClick={stopObserver} className="text-xs px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded">
             Stop Observer
           </button>
         )}

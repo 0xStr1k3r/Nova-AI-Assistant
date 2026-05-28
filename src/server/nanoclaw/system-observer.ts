@@ -11,6 +11,8 @@ class SystemObserver extends EventEmitter {
   private pollIntervalMs: number;
   private timer?: NodeJS.Timeout;
   private running: boolean = false;
+  private lastTickAt: number = 0;
+  private dedupeCache = new Map<string, number>();
 
   constructor(opts: ObserverOptions = {}) {
     super();
@@ -33,8 +35,25 @@ class SystemObserver extends EventEmitter {
     console.log('[OBSERVER] Stopped system observer');
   }
 
+  getState() {
+    return {
+      running: this.running,
+      pollIntervalMs: this.pollIntervalMs,
+      lastTickAt: this.lastTickAt,
+    };
+  }
+
+  private shouldEmit(key: string, windowMs: number = 60_000): boolean {
+    const now = Date.now();
+    const prev = this.dedupeCache.get(key) || 0;
+    if (now - prev < windowMs) return false;
+    this.dedupeCache.set(key, now);
+    return true;
+  }
+
   private async tick() {
     try {
+      this.lastTickAt = Date.now();
       // Active window (if desktop-mapper exists)
       try {
         const dm = await import('../../desktop-mapper');
@@ -50,7 +69,10 @@ class SystemObserver extends EventEmitter {
       try {
         const CalendarAdapter = (await import('./adapters/calendar')).default;
         const cal = new CalendarAdapter(process.env.AGENT_GROUP_ID || 'default', 60_000);
-        cal.on('upcoming', (ev: any) => this.emit('calendarEvent', ev));
+        cal.on('upcoming', (ev: any) => {
+          const key = `calendar:${ev?.id || ev?.title || JSON.stringify(ev)}`;
+          if (this.shouldEmit(key, 90_000)) this.emit('calendarEvent', ev);
+        });
         // run one-off poll to surface events quickly
         await cal.pollOnce();
       } catch (e) {
@@ -61,7 +83,10 @@ class SystemObserver extends EventEmitter {
       try {
         const EmailAdapter = (await import('./adapters/email')).default;
         const mail = new EmailAdapter(process.env.AGENT_GROUP_ID || 'default', 60_000);
-        mail.on('unread', (m: any) => this.emit('unreadEmail', m));
+        mail.on('unread', (m: any) => {
+          const key = `email:${m?.id || m?.subject || JSON.stringify(m)}`;
+          if (this.shouldEmit(key, 90_000)) this.emit('unreadEmail', m);
+        });
         await mail.pollOnce();
       } catch (e) {
         console.warn('[OBSERVER] Email adapter not available:', e.message || e);

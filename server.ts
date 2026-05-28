@@ -94,6 +94,10 @@ import { setupTaskAPI } from "./src/server/task-api";
 import { setupChannelAPI } from "./src/server/channel-api";
 import { setupObserverAPI } from "./src/server/observer-api";
 import setupWebSocketHandler from "./src/server/websocket-handler";
+import { setupContainerAPI } from "./src/server/container-api";
+import { setupWorkflowAPI } from "./src/server/workflow-api";
+import { setupProactiveAPI } from "./src/server/proactive-api";
+import { setupVoiceAPI } from "./src/server/voice-api";
 
 const execAsync = util.promisify(exec);
 
@@ -465,6 +469,10 @@ async function startServer() {
   setupTaskAPI(app);
   setupChannelAPI(app);
   setupObserverAPI(app);
+  setupContainerAPI(app);
+  setupWorkflowAPI(app);
+  setupProactiveAPI(app);
+  setupVoiceAPI(app);
   setupWebSocketHandler(wss);
   console.log('[SERVER] Phase 4 APIs ready');
   // ───────────────────────────────────────────────────────────────────────

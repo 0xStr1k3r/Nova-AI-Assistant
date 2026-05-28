@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { capturePageScreenshotBase64 } from "../browser_automation/browser";
-import { analyzePageLayout } from "../browser_automation/vision-recovery";
-import { clickAt, moveMouseTo } from "../browser_automation/input/human";
+import { capturePageScreenshotBase64 } from "../../browser_automation/browser";
+import { analyzePageLayout } from "../../browser_automation/vision-recovery";
+import { clickAt, moveMouseTo } from "../../browser_automation/input/human";
 
 /**
  * Vision-to-Action Loop: Screenshot → Understand → Plan → Execute → Verify
