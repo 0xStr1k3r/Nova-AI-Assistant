@@ -8,6 +8,7 @@ import { SubTask } from "./types";
 
 const execAsync = util.promisify(exec);
 const PROJECT_ROOT = "/home/chiru/antigravity/Nexus-OS-Voice-Assistant";
+type CodingProvider = "nim" | "openrouter" | "groq";
 
 function logProgress(msg: string, logPath: string, onProgress?: (msg: string) => void) {
   console.log(`[NVIDIA-ORCHESTRATOR] ${msg}`);
@@ -35,7 +36,9 @@ export async function runOrchestratedNvidiaAgent(
   apiKey: string,
   model: string,
   logPath: string,
-  onProgress?: (msg: string) => void
+  onProgress?: (msg: string) => void,
+  provider: CodingProvider = "nim",
+  nimBaseUrl?: string
 ): Promise<string> {
   // Ensure config dir exists
   fs.mkdirSync(path.dirname(logPath), { recursive: true });
@@ -47,11 +50,19 @@ MAIN PROMPT: ${prompt}
 ================================================\n\n`;
   fs.writeFileSync(logPath, startHeader, "utf-8");
 
-  logProgress("Initializing multi-agent orchestrator...", logPath, onProgress);
+  logProgress(`Initializing multi-agent orchestrator (provider: ${provider})...`, logPath, onProgress);
   logProgress("Decomposing main objective into sub-tasks for parallel execution...", logPath, onProgress);
 
   let tasks: SubTask[] = [];
-  try {
+  if (provider !== "nim") {
+    tasks = [{
+      id: "task_1",
+      title: "Execute objective",
+      prompt,
+      dependencies: []
+    }];
+    logProgress("[Orchestrator] Using single-task mode for non-NIM providers to keep execution lightweight.", logPath, onProgress);
+  } else try {
     const decompositionPrompt = `You are "Nova Multi-Agent Architect", a coordinator that decomposes complex software engineering objectives into smaller, independent sub-tasks that can be executed in parallel.
 
 Analyze the overall objective: "${prompt}"
@@ -75,7 +86,7 @@ Reply strictly in JSON format as a list of task objects:
   ]
 }`;
 
-    const response = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+    const response = await fetch(`${nimBaseUrl || "https://integrate.api.nvidia.com"}/v1/chat/completions`, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${apiKey}`,
@@ -166,7 +177,9 @@ Reply strictly in JSON format as a list of task objects:
             (msg) => {
               // Pipe sub-agent updates directly into coordinator progress logs
               logProgress(`[Task ${t.id}] ${msg}`, logPath, onProgress);
-            }
+            },
+            provider,
+            nimBaseUrl
           );
 
           activePromises.push({ id: t.id, promise: subtaskPromise });
@@ -229,7 +242,7 @@ ${compileErrorMsg.substring(0, 3000)}`;
 
     const fixerLogPath = logPath.replace(".log", "_fixer.log");
     try {
-      const fixerModel = "qwen/qwen3-coder-480b-a35b-instruct"; // Best coder for fixing build errors
+      const fixerModel = provider === "nim" ? "qwen/qwen3-coder-480b-a35b-instruct" : "auto";
       const fixerSummary = await runCustomNvidiaAgent(
         `${agentId}_fixer`,
         fixerPrompt,
@@ -238,7 +251,9 @@ ${compileErrorMsg.substring(0, 3000)}`;
         fixerLogPath,
         (msg) => {
           logProgress(`[Fixer] ${msg}`, logPath, onProgress);
-        }
+        },
+        provider,
+        nimBaseUrl
       );
 
       // Re-run compile check

@@ -37,8 +37,11 @@ export interface IntegrationsConfig {
   obsidianEnabled: boolean;
   obsidianPath: string;
   customAgentEnabled?: boolean;
+  codingProvider?: "nim" | "openrouter" | "groq";
   nvidiaApiKey?: string;
   nvidiaModel?: string;
+  openrouterApiKey?: string;
+  groqApiKey?: string;
 }
 
 export interface NovaConfig {
@@ -168,8 +171,11 @@ const defaultConfig: NovaConfig = {
     obsidianEnabled: false,
     obsidianPath: "",
     customAgentEnabled: false,
+    codingProvider: "nim",
     nvidiaApiKey: "",
     nvidiaModel: "auto",
+    openrouterApiKey: "",
+    groqApiKey: "",
   },
 };
 
@@ -237,18 +243,30 @@ export function getDb(): NovaConfig {
           obsidianEnabled: false,
           obsidianPath: "",
           customAgentEnabled: false,
+          codingProvider: "nim",
           nvidiaApiKey: "",
           nvidiaModel: "auto",
+          openrouterApiKey: "",
+          groqApiKey: "",
         };
       } else {
         if (merged.integrations.customAgentEnabled === undefined) {
           merged.integrations.customAgentEnabled = false;
+        }
+        if (merged.integrations.codingProvider === undefined) {
+          merged.integrations.codingProvider = "nim";
         }
         if (merged.integrations.nvidiaApiKey === undefined) {
           merged.integrations.nvidiaApiKey = "";
         }
         if (merged.integrations.nvidiaModel === undefined) {
           merged.integrations.nvidiaModel = "auto";
+        }
+        if (merged.integrations.openrouterApiKey === undefined) {
+          merged.integrations.openrouterApiKey = "";
+        }
+        if (merged.integrations.groqApiKey === undefined) {
+          merged.integrations.groqApiKey = "";
         }
       }
 

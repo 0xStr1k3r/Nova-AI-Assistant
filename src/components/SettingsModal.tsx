@@ -38,8 +38,11 @@ export type ConfigType = {
     obsidianEnabled: boolean;
     obsidianPath: string;
     customAgentEnabled?: boolean;
+    codingProvider?: "nim" | "openrouter" | "groq";
     nvidiaApiKey?: string;
     nvidiaModel?: string;
+    openrouterApiKey?: string;
+    groqApiKey?: string;
   };
 };
 
@@ -622,7 +625,7 @@ export default function SettingsModal({
                   <button
                     type="button"
                     onClick={() => {
-                      const integrations = local.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "", customAgentEnabled: false, nvidiaApiKey: "", nvidiaModel: "meta/llama-3.3-70b-instruct" };
+                      const integrations = local.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "", customAgentEnabled: false, codingProvider: "nim", nvidiaApiKey: "", nvidiaModel: "auto", openrouterApiKey: "", groqApiKey: "" };
                       setLocal({
                         ...local,
                         integrations: {
@@ -678,7 +681,7 @@ export default function SettingsModal({
                   <button
                     type="button"
                     onClick={() => {
-                      const integrations = local.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "", customAgentEnabled: false, nvidiaApiKey: "", nvidiaModel: "meta/llama-3.3-70b-instruct" };
+                      const integrations = local.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "", customAgentEnabled: false, codingProvider: "nim", nvidiaApiKey: "", nvidiaModel: "auto", openrouterApiKey: "", groqApiKey: "" };
                       setLocal({
                         ...local,
                         integrations: {
@@ -706,7 +709,7 @@ export default function SettingsModal({
                       type="text"
                       value={local.integrations?.obsidianPath || ""}
                       onChange={e => {
-                        const integrations = local.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "", customAgentEnabled: false, nvidiaApiKey: "", nvidiaModel: "meta/llama-3.3-70b-instruct" };
+                        const integrations = local.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "", customAgentEnabled: false, codingProvider: "nim", nvidiaApiKey: "", nvidiaModel: "auto", openrouterApiKey: "", groqApiKey: "" };
                         setLocal({
                           ...local,
                           integrations: {
@@ -728,7 +731,7 @@ export default function SettingsModal({
                 )}
               </div>
 
-              {/* Custom NVIDIA NIM Coding Agent Integration */}
+              {/* Custom Coding Agent Integration */}
               <div
                 className="p-4 rounded-2xl space-y-4"
                 style={{
@@ -753,16 +756,16 @@ export default function SettingsModal({
                       NV
                     </div>
                     <div>
-                      <p className="text-xs font-bold text-white">Custom NVIDIA Coding Agent</p>
+                      <p className="text-xs font-bold text-white">Custom Coding Agent</p>
                       <p className="text-[10px] text-slate-500 mt-0.5">
-                        Autonomous local agent loop powered by NVIDIA NIM API.
+                        Heavy coding/tasks via NVIDIA NIM, OpenRouter, or GroqCloud.
                       </p>
                     </div>
                   </div>
                   <button
                     type="button"
                     onClick={() => {
-                      const integrations = local.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "", customAgentEnabled: false, nvidiaApiKey: "", nvidiaModel: "meta/llama-3.3-70b-instruct" };
+                      const integrations = local.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "", customAgentEnabled: false, codingProvider: "nim", nvidiaApiKey: "", nvidiaModel: "auto", openrouterApiKey: "", groqApiKey: "" };
                       setLocal({
                         ...local,
                         integrations: {
@@ -786,34 +789,80 @@ export default function SettingsModal({
                 {local.integrations?.customAgentEnabled && (
                   <div className="space-y-3 pt-2 border-t border-white/5 animate-slide-up">
                     <div className="space-y-1.5">
-                      <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">NVIDIA API Key</label>
-                      <input
-                        type="password"
-                        value={local.integrations?.nvidiaApiKey || ""}
+                      <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Coding Provider</label>
+                      <select
+                        value={local.integrations?.codingProvider || "nim"}
                         onChange={e => {
-                          const integrations = local.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "", customAgentEnabled: false, nvidiaApiKey: "", nvidiaModel: "meta/llama-3.3-70b-instruct" };
+                          const integrations = local.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "", customAgentEnabled: false, codingProvider: "nim", nvidiaApiKey: "", nvidiaModel: "auto", openrouterApiKey: "", groqApiKey: "" };
                           setLocal({
                             ...local,
                             integrations: {
                               ...integrations,
-                              nvidiaApiKey: e.target.value
+                              codingProvider: e.target.value as "nim" | "openrouter" | "groq"
+                            }
+                          });
+                        }}
+                        className="w-full px-3.5 py-2 rounded-xl text-xs text-white focus:outline-none transition-all bg-slate-900 border border-white/10"
+                        style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.09)" }}
+                      >
+                        <option value="nim" className="bg-slate-900 text-white">NVIDIA NIM (Recommended for coding)</option>
+                        <option value="openrouter" className="bg-slate-900 text-white">OpenRouter</option>
+                        <option value="groq" className="bg-slate-900 text-white">GroqCloud</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">
+                        {local.integrations?.codingProvider === "openrouter"
+                          ? "OpenRouter API Key"
+                          : local.integrations?.codingProvider === "groq"
+                            ? "Groq API Key"
+                            : "NVIDIA API Key"}
+                      </label>
+                      <input
+                        type="password"
+                        value={
+                          local.integrations?.codingProvider === "openrouter"
+                            ? (local.integrations?.openrouterApiKey || "")
+                            : local.integrations?.codingProvider === "groq"
+                              ? (local.integrations?.groqApiKey || "")
+                              : (local.integrations?.nvidiaApiKey || "")
+                        }
+                        onChange={e => {
+                          const integrations = local.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "", customAgentEnabled: false, codingProvider: "nim", nvidiaApiKey: "", nvidiaModel: "auto", openrouterApiKey: "", groqApiKey: "" };
+                          const codingProvider = integrations.codingProvider || "nim";
+                          setLocal({
+                            ...local,
+                            integrations: {
+                              ...integrations,
+                              ...(codingProvider === "openrouter"
+                                ? { openrouterApiKey: e.target.value }
+                                : codingProvider === "groq"
+                                  ? { groqApiKey: e.target.value }
+                                  : { nvidiaApiKey: e.target.value })
                             }
                           });
                         }}
                         className="w-full px-3.5 py-2 rounded-xl text-xs text-white focus:outline-none transition-all font-mono animate-slide-up"
                         style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.09)" }}
-                        placeholder="nvapi-..."
+                        placeholder={
+                          local.integrations?.codingProvider === "openrouter"
+                            ? "sk-or-..."
+                            : local.integrations?.codingProvider === "groq"
+                              ? "gsk_..."
+                              : "nvapi-..."
+                        }
                         onFocus={e => (e.currentTarget.style.border = "1px solid rgba(139,92,246,0.5)")}
                         onBlur={e => (e.currentTarget.style.border = "1px solid rgba(255,255,255,0.09)")}
                       />
                     </div>
 
                     <div className="space-y-1.5">
-                      <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">NVIDIA NIM Model</label>
+                      <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Coding Model</label>
                       <select
                         value={local.integrations?.nvidiaModel || "auto"}
                         onChange={e => {
-                          const integrations = local.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "", customAgentEnabled: false, nvidiaApiKey: "", nvidiaModel: "auto" };
+                          const integrations = local.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "", customAgentEnabled: false, codingProvider: "nim", nvidiaApiKey: "", nvidiaModel: "auto", openrouterApiKey: "", groqApiKey: "" };
                           setLocal({
                             ...local,
                             integrations: {
@@ -826,12 +875,11 @@ export default function SettingsModal({
                         style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.09)" }}
                       >
                         <option value="auto" className="bg-slate-900 text-white">Auto-Select Model (Recommended)</option>
-                        <option value="meta/llama-3.3-70b-instruct" className="bg-slate-900 text-white">Llama 3.3 70B Instruct (1.28s)</option>
-                        <option value="qwen/qwen3-coder-480b-a35b-instruct" className="bg-slate-900 text-white">Qwen 3 Coder 480B Instruct (2.53s)</option>
-                        <option value="deepseek-ai/deepseek-v4-pro" className="bg-slate-900 text-white">DeepSeek V4 Pro (0.46s)</option>
-                        <option value="meta/llama-3.1-8b-instruct" className="bg-slate-900 text-white">Llama 3.1 8B Instruct (0.21s)</option>
-                        <option value="meta/llama-3.2-11b-vision-instruct" className="bg-slate-900 text-white">Llama 3.2 11B Vision (0.22s)</option>
-                        <option value="mistralai/mistral-large-3-675b-instruct-2512" className="bg-slate-900 text-white">Mistral Large 3 (0.72s)</option>
+                        <option value="meta/llama-3.3-70b-instruct" className="bg-slate-900 text-white">NIM: Llama 3.3 70B</option>
+                        <option value="qwen/qwen3-coder-480b-a35b-instruct" className="bg-slate-900 text-white">NIM: Qwen 3 Coder 480B</option>
+                        <option value="deepseek-ai/deepseek-v4-pro" className="bg-slate-900 text-white">NIM: DeepSeek V4 Pro</option>
+                        <option value="openai/gpt-oss-120b" className="bg-slate-900 text-white">OpenRouter/Groq: GPT-OSS 120B</option>
+                        <option value="llama-3.3-70b-versatile" className="bg-slate-900 text-white">Groq: Llama 3.3 70B Versatile</option>
                       </select>
                     </div>
                   </div>

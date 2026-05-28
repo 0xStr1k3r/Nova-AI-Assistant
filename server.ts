@@ -110,8 +110,7 @@ interface ActiveAgent {
 }
 const activeAgents = new Map<string, ActiveAgent>();
 
-// Helper to write NVIDIA_API_KEY directly into the local .env file
-function writeNvidiaApiKeyToEnv(key: string) {
+function writeApiKeyToEnv(envKey: string, key: string) {
   const envPath = path.resolve("/home/chiru/antigravity/Nexus-OS-Voice-Assistant/.env");
   let content = "";
   if (fs.existsSync(envPath)) {
@@ -120,17 +119,22 @@ function writeNvidiaApiKeyToEnv(key: string) {
   const lines = content.split("\n");
   let found = false;
   for (let i = 0; i < lines.length; i++) {
-    if (lines[i].startsWith("NVIDIA_API_KEY=")) {
-      lines[i] = `NVIDIA_API_KEY="${key}"`;
+    if (lines[i].startsWith(`${envKey}=`)) {
+      lines[i] = `${envKey}="${key}"`;
       found = true;
       break;
     }
   }
   if (!found) {
-    lines.push(`NVIDIA_API_KEY="${key}"`);
+    lines.push(`${envKey}="${key}"`);
   }
   fs.writeFileSync(envPath, lines.join("\n"), "utf-8");
-  process.env.NVIDIA_API_KEY = key;
+  process.env[envKey] = key;
+}
+
+// Helper to write NVIDIA_API_KEY directly into the local .env file
+function writeNvidiaApiKeyToEnv(key: string) {
+  writeApiKeyToEnv("NVIDIA_API_KEY", key);
 }
 
 // ─── Model Constants (optimized for free-tier rate limits) ────────────────────
@@ -1104,10 +1108,27 @@ ${semanticContext ? `\n\n📚 SEMANTIC MEMORY CONTEXT (Recently retrieved releva
                   // Generate a unique agentId
                   const agentId = "agent_" + Math.random().toString(36).substring(2, 9);
                   const db = getDb();
-                  const apiKey = process.env.NVIDIA_API_KEY || db.integrations?.nvidiaApiKey || "";
+                  const provider = db.integrations?.codingProvider || "nim";
+                  const apiKey =
+                    provider === "openrouter"
+                      ? (process.env.OPENROUTER_API_KEY || db.integrations?.openrouterApiKey || "")
+                      : provider === "groq"
+                        ? (process.env.GROQ_API_KEY || db.integrations?.groqApiKey || "")
+                        : (process.env.NVIDIA_API_KEY || process.env.NIM_API_KEY || db.integrations?.nvidiaApiKey || "");
+                  const nimBaseUrl = process.env.NIM_BASE_URL || "https://integrate.api.nvidia.com";
                   const selectedModel = requestedModel || db.integrations?.nvidiaModel || "auto";
+                  if (!apiKey) {
+                    toolResponses.push({
+                      id: call.id,
+                      name: call.name,
+                      response: {
+                        result: `ERROR: Missing API key for coding provider "${provider}". Please set it in Settings > Integrations.`
+                      },
+                    });
+                    continue;
+                  }
 
-                  logTurn("AGENT", `Spawning concurrent agent [${agentId}] (model: ${selectedModel}): ${prompt}`);
+                  logTurn("AGENT", `Spawning concurrent agent [${agentId}] (provider: ${provider}, model: ${selectedModel}): ${prompt}`);
 
                   const logPath = path.join("/home/chiru/.config/nova-voice-assistant", `coding_agent_${agentId}.log`);
 
@@ -1125,6 +1146,7 @@ ${semanticContext ? `\n\n📚 SEMANTIC MEMORY CONTEXT (Recently retrieved releva
                   clientWs.send(JSON.stringify({
                     action: "agent_start",
                     agentId,
+                    provider,
                     model: selectedModel,
                     prompt
                   }));
@@ -1138,7 +1160,7 @@ ${semanticContext ? `\n\n📚 SEMANTIC MEMORY CONTEXT (Recently retrieved releva
                         message: msg
                       }));
                     }
-                  }).then((summary) => {
+                  }, provider, nimBaseUrl).then((summary) => {
                     const agent = activeAgents.get(agentId);
                     if (agent) {
                       agent.running = false;
@@ -1170,7 +1192,7 @@ ${semanticContext ? `\n\n📚 SEMANTIC MEMORY CONTEXT (Recently retrieved releva
                     console.error(`[AGENT ERROR] Agent [${agentId}] failed:`, err);
                   });
 
-                  const spawnResult = `🤖 Successfully spawned autonomous developer coding agent [${agentId}] in the background using model "${selectedModel}". All progress logs are written to ${logPath}. Check progress using getCodingAgentStatus and pass agentId: "${agentId}". You can reply to the user now; the agent is running.`;
+                  const spawnResult = `🤖 Successfully spawned autonomous developer coding agent [${agentId}] in the background using provider "${provider}" and model "${selectedModel}". All progress logs are written to ${logPath}. Check progress using getCodingAgentStatus and pass agentId: "${agentId}". You can reply to the user now; the agent is running.`;
 
                   toolResponses.push({
                     id: call.id,
@@ -1938,9 +1960,21 @@ ${semanticContext ? `\n\n📚 SEMANTIC MEMORY CONTEXT (Recently retrieved releva
   app.get("/api/config", (_req, res) => {
     const config = getDb();
     if (!config.integrations) {
-      config.integrations = { godoEnabled: false, obsidianEnabled: false, obsidianPath: "", customAgentEnabled: false, nvidiaApiKey: "", nvidiaModel: "meta/llama-3.3-70b-instruct" };
+      config.integrations = {
+        godoEnabled: false,
+        obsidianEnabled: false,
+        obsidianPath: "",
+        customAgentEnabled: false,
+        codingProvider: "nim",
+        nvidiaApiKey: "",
+        nvidiaModel: "auto",
+        openrouterApiKey: "",
+        groqApiKey: "",
+      };
     }
-    config.integrations.nvidiaApiKey = process.env.NVIDIA_API_KEY || "";
+    config.integrations.nvidiaApiKey = process.env.NVIDIA_API_KEY || process.env.NIM_API_KEY || "";
+    config.integrations.openrouterApiKey = process.env.OPENROUTER_API_KEY || "";
+    config.integrations.groqApiKey = process.env.GROQ_API_KEY || "";
     res.json(config);
   });
 
@@ -1957,12 +1991,26 @@ ${semanticContext ? `\n\n📚 SEMANTIC MEMORY CONTEXT (Recently retrieved releva
     const db = getDb();
     const newConfig: NovaConfig = { ...db, ...req.body };
 
-    // Extract nvidiaApiKey and write to .env if provided
+    // Extract API keys and write to .env if provided
     if (req.body.integrations && req.body.integrations.nvidiaApiKey !== undefined) {
       const apiKey = req.body.integrations.nvidiaApiKey;
       writeNvidiaApiKeyToEnv(apiKey);
       if (newConfig.integrations) {
         newConfig.integrations.nvidiaApiKey = ""; // do not save key in db JSON
+      }
+    }
+    if (req.body.integrations && req.body.integrations.openrouterApiKey !== undefined) {
+      const apiKey = req.body.integrations.openrouterApiKey;
+      writeApiKeyToEnv("OPENROUTER_API_KEY", apiKey);
+      if (newConfig.integrations) {
+        newConfig.integrations.openrouterApiKey = "";
+      }
+    }
+    if (req.body.integrations && req.body.integrations.groqApiKey !== undefined) {
+      const apiKey = req.body.integrations.groqApiKey;
+      writeApiKeyToEnv("GROQ_API_KEY", apiKey);
+      if (newConfig.integrations) {
+        newConfig.integrations.groqApiKey = "";
       }
     }
 
@@ -1989,7 +2037,9 @@ ${semanticContext ? `\n\n📚 SEMANTIC MEMORY CONTEXT (Recently retrieved releva
 
     const mergedResponse = getDb();
     if (mergedResponse.integrations) {
-      mergedResponse.integrations.nvidiaApiKey = process.env.NVIDIA_API_KEY || "";
+      mergedResponse.integrations.nvidiaApiKey = process.env.NVIDIA_API_KEY || process.env.NIM_API_KEY || "";
+      mergedResponse.integrations.openrouterApiKey = process.env.OPENROUTER_API_KEY || "";
+      mergedResponse.integrations.groqApiKey = process.env.GROQ_API_KEY || "";
     }
     res.json({ success: true, config: mergedResponse }); // Return config with env-injected key
   });

@@ -8,6 +8,23 @@ import { performWebSearch, fetchWebpageContent } from "./search-scraper";
 const execAsync = util.promisify(exec);
 const PROJECT_ROOT = "/home/chiru/antigravity/Nexus-OS-Voice-Assistant";
 const ALLOWED_ROOT = "/home/chiru";
+type CodingProvider = "nim" | "openrouter" | "groq";
+
+function selectModelForProvider(provider: CodingProvider, prompt: string, model: string): string {
+  if (model && model !== "auto") return model;
+  if (provider === "nim") return selectBestModelForTask(prompt);
+  if (provider === "groq") {
+    const complexPrompt = /refactor|architecture|complex|database|algorithm|rewrite|debug/i.test(prompt);
+    return complexPrompt ? "llama-3.3-70b-versatile" : "llama-3.1-8b-instant";
+  }
+  return "openai/gpt-oss-120b";
+}
+
+function getProviderEndpoint(provider: CodingProvider, nimBaseUrl?: string): string {
+  if (provider === "openrouter") return "https://openrouter.io/api/v1/chat/completions";
+  if (provider === "groq") return "https://api.groq.com/openai/v1/chat/completions";
+  return `${nimBaseUrl || "https://integrate.api.nvidia.com"}/v1/chat/completions`;
+}
 
 // Helper to log progress to console, file, and WebSocket callback
 function logProgress(msg: string, logPath: string, onProgress?: (msg: string) => void) {
@@ -40,13 +57,12 @@ export async function runCustomNvidiaAgent(
   apiKey: string,
   model: string,
   logPath: string,
-  onProgress?: (msg: string) => void
+  onProgress?: (msg: string) => void,
+  provider: CodingProvider = "nim",
+  nimBaseUrl?: string
 ): Promise<string> {
   // Resolve model selection
-  let selectedModel = model;
-  if (model === "auto" || !model) {
-    selectedModel = selectBestModelForTask(prompt);
-  }
+  const selectedModel = selectModelForProvider(provider, prompt, model);
 
   // Ensure config dir exists
   fs.mkdirSync(path.dirname(logPath), { recursive: true });
@@ -60,7 +76,7 @@ PROMPT: ${prompt}
 ================================================\n\n`;
   fs.writeFileSync(logPath, startHeader, "utf-8");
 
-  logProgress(`Initializing autonomous developer agent loop (Model: ${selectedModel})...`, logPath, onProgress);
+  logProgress(`Initializing autonomous developer agent loop (Provider: ${provider}, Model: ${selectedModel})...`, logPath, onProgress);
 
   const systemInstruction = `You are "Nova Developer Agent", a premium, state-of-the-art autonomous software engineering agent.
 Your objective: "${prompt}"
@@ -122,12 +138,13 @@ Available Tools:
     conversationHistory = pruneHistory(conversationHistory, logPath, onProgress);
 
     try {
-      logProgress(`Querying NVIDIA API (${selectedModel})...`, logPath, onProgress);
-      const response = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+      logProgress(`Querying ${provider.toUpperCase()} API (${selectedModel})...`, logPath, onProgress);
+      const response = await fetch(getProviderEndpoint(provider, nimBaseUrl), {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          ...(provider === "openrouter" ? { "HTTP-Referer": "https://nova-ai.local" } : {})
         },
         body: JSON.stringify({
           model: selectedModel,
@@ -139,7 +156,7 @@ Available Tools:
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`NVIDIA API HTTP error ${response.status}: ${errorText}`);
+        throw new Error(`${provider.toUpperCase()} API HTTP error ${response.status}: ${errorText}`);
       }
 
       const data = await response.json();
