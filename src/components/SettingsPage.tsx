@@ -94,7 +94,17 @@ function InputField({
   );
 }
 
-export default function SettingsPage({ config, setConfig }: { config: any; setConfig: (c: any) => void }) {
+export default function SettingsPage({
+  config,
+  setConfig,
+  pauseWakeWord,
+  resumeWakeWord,
+}: {
+  config: any;
+  setConfig: (c: any) => void;
+  pauseWakeWord?: () => void;
+  resumeWakeWord?: () => void;
+}) {
   const [local, setLocal]       = useState<ConfigType | null>(null);
   const [tab, setTab]           = useState<string>("profile");
   const [saving, setSaving]     = useState(false);
@@ -135,6 +145,7 @@ export default function SettingsPage({ config, setConfig }: { config: any; setCo
       setRecordingVoice(true);
       setRecordingProgress(0);
       setRecordingStatus(`Preparing mic for phrase ${step}…`);
+      if (pauseWakeWord) pauseWakeWord();
       await initVoiceModel();
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
@@ -162,6 +173,7 @@ export default function SettingsPage({ config, setConfig }: { config: any; setCo
         setRecordingStatus(`✔ Phrase ${step} captured. Ready for phrase ${step + 1}.`);
         setRecordingVoice(false);
         setRecordingProgress(0);
+        if (resumeWakeWord) resumeWakeWord();
       } else {
         setRecordingStatus("⚙ Finalising voiceprint…");
         const all = accumulatedFramesRef.current;
@@ -175,12 +187,14 @@ export default function SettingsPage({ config, setConfig }: { config: any; setCo
         setNewVoiceName("");
         setEnrollStep(0);
         accumulatedFramesRef.current = [];
+        if (resumeWakeWord) resumeWakeWord();
       }
     } catch (err: any) {
       clearInterval(progressIntervalRef.current);
       setRecordingStatus(`❌ Error: ${err.message}`);
       setRecordingVoice(false);
       setRecordingProgress(0);
+      if (resumeWakeWord) resumeWakeWord();
     }
   };
 

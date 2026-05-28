@@ -9,7 +9,7 @@ export interface VoiceProfile {
 }
 
 // Ensure WebAssembly uses the correct paths when bundled
-ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.16.3/dist/';
+ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.26.0/dist/';
 
 // Singleton instance
 export const verifier = new SpeakerVerification();

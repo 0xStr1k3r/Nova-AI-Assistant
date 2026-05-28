@@ -334,7 +334,12 @@ export default function App() {
                 initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -8 }}
                 transition={{ duration: 0.2 }}
               >
-                <SettingsPage config={config} setConfig={setConfig} />
+                <SettingsPage
+                  config={config}
+                  setConfig={setConfig}
+                  pauseWakeWord={stopWakeWordListening}
+                  resumeWakeWord={startWakeWordListening}
+                />
               </motion.div>
             )}
 
