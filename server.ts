@@ -15,6 +15,12 @@ import {
   getConversationSessions, clearConversationSessions, formatRecentConversationsForPrompt,
 } from "./src/server/db";
 import {
+  storeConversationToMemory,
+  getSemanticContextForPrompt,
+  cleanupOldMemories,
+  getMemoryStats,
+} from "./src/server/memory-integration";
+import {
   navigate as bNavigate,
   clickElement as bClick,
   typeText as bType,
@@ -482,6 +488,16 @@ async function startServer() {
 
     const memoryContext = formatMemoryForPrompt(db.memory);
     const recentConversationsContext = formatRecentConversationsForPrompt();
+    
+    // Get semantic memory context for this user query
+    let semanticContext = "";
+    try {
+      if (userMessage && userMessage.length > 0) {
+        semanticContext = await getSemanticContextForPrompt(userMessage, 3);
+      }
+    } catch (error) {
+      console.error("[SEMANTIC_MEMORY] Error fetching context:", error);
+    }
 
     const integrations = db.integrations || { godoEnabled: false, obsidianEnabled: false, obsidianPath: "", customAgentEnabled: false };
     let integrationsPrompt = "";
@@ -524,7 +540,8 @@ VOICE RULES (non-negotiable):
 - Address the user as ${userName} occasionally to feel personal.
 - When the session starts, say ONLY: "${greeting}" — nothing else. Just that greeting.
 ${memoryContext}
-${recentConversationsContext}`;
+${recentConversationsContext}
+${semanticContext ? `\n\n📚 SEMANTIC MEMORY CONTEXT (Recently retrieved relevant information):\n${semanticContext}` : ""}`;
 
     const functionDeclarations: any[] = [
       {
@@ -1862,6 +1879,27 @@ ${recentConversationsContext}`;
       // Save final conversation session log
       conversationSession.endTime = new Date().toISOString();
       saveConversationSession(conversationSession);
+
+      // Store conversation turns to semantic memory
+      if (sessionLog.length > 2) {
+        for (let i = 0; i < sessionLog.length - 1; i++) {
+          const currentTurn = sessionLog[i];
+          const nextTurn = sessionLog[i + 1];
+          
+          if (currentTurn.startsWith(userName + ":") && nextTurn.startsWith("Nova:")) {
+            const userMsg = currentTurn.substring(userName.length + 1).trim();
+            const assistantMsg = nextTurn.substring(5).trim();
+            
+            if (userMsg.length > 3 && assistantMsg.length > 3) {
+              try {
+                await storeConversationToMemory(userMsg, assistantMsg);
+              } catch (error) {
+                console.error("[SEMANTIC_MEMORY STORE ERROR]", error);
+              }
+            }
+          }
+        }
+      }
 
       if (session) {
         try {

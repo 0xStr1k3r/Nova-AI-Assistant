@@ -16,4 +16,11 @@ export { configureStealthAndAgent } from "./stealth";
 export { autoAcceptDialogs } from "./dialogs";
 export { autoScrollPage } from "./scrolling";
 export { extractTableData } from "./tables";
+export {
+  clickElementWithRecovery,
+  getRecoveryStats,
+  resetRecoveryStats,
+  analyzePageLayout,
+  smartElementClick,
+} from "./vision-recovery";
 
