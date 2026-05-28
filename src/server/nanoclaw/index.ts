@@ -23,6 +23,11 @@ export { default as TelegramAdapter } from './channel-adapters/telegram';
 export { default as DiscordAdapter } from './channel-adapters/discord';
 export { default as SlackAdapter } from './channel-adapters/slack';
 
+export { default as TaskScheduler, getTaskScheduler } from './task-scheduler';
+export type { ScheduledTask } from './task-scheduler';
+
+export { default as SystemObserver, getSystemObserver } from './system-observer';
+
 /**
  * Initialize NanoClaw multi-channel system
  * Call this once at application startup

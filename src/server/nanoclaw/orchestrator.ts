@@ -6,7 +6,10 @@
 
 import { getRouter } from './router';
 import { getAdapterRegistry } from './channel-adapters/registry';
+import { getTaskScheduler } from './task-scheduler';
+import { getSystemObserver } from './system-observer';
 import type { Message, NovaResponse, MessageChannel } from './types';
+import type { ScheduledTask } from './task-scheduler';
 
 interface OrchestrationConfig {
   agentGroupId: string;
@@ -28,7 +31,7 @@ class ChannelOrchestrator {
   }
 
   /**
-   * Start orchestration: inbound polling + outbound delivery
+   * Start orchestration: inbound polling + outbound delivery + scheduled tasks
    */
   async start(novaHandler: (msg: Message) => Promise<NovaResponse>): Promise<void> {
     if (this.isRunning) {
@@ -47,6 +50,26 @@ class ChannelOrchestrator {
     this.startInboundPolling();
     this.startOutboundDelivery();
     this.startHealthCheck();
+
+    // Start scheduler for recurring tasks
+    try {
+      const scheduler = getTaskScheduler(this.config.agentGroupId);
+      await scheduler.loadTasks();
+      scheduler.on('executeTask', (task: ScheduledTask) => this.handleScheduledTask(task));
+      scheduler.start();
+    } catch (err) {
+      console.warn('[ORCHESTRATOR] Scheduler init failed:', err);
+    }
+
+    // Start system observer for proactive events
+    try {
+      const observer = getSystemObserver();
+      observer.on('calendarEvent', (ev: any) => console.log('[ORCHESTRATOR] Calendar event:', ev));
+      observer.on('unreadEmail', (mail: any) => console.log('[ORCHESTRATOR] Unread email:', mail));
+      observer.start();
+    } catch (err) {
+      console.warn('[ORCHESTRATOR] Observer init failed:', err);
+    }
   }
 
   /**
@@ -74,6 +97,31 @@ class ChannelOrchestrator {
       adapters: this.registry.getStats(),
       config: this.config,
     };
+  }
+
+  // ============ Scheduled Tasks Handler ============
+
+  private async handleScheduledTask(task: ScheduledTask): Promise<void> {
+    try {
+      for (const channelId of task.channels) {
+        const adapter = this.registry.getAdapter(channelId as MessageChannel);
+        if (!adapter) {
+          console.warn(`[ORCHESTRATOR] No adapter for channel ${channelId}`);
+          continue;
+        }
+
+        // Send scheduled message
+        let content = task.action.message || `Task: ${task.name}`;
+        if (task.action.type === 'run_connector' && task.action.connector) {
+          content = `Running: ${task.action.connector.app}.${task.action.connector.command}`;
+        }
+
+        await adapter.sendMessage('admin', content);
+        console.log(`[ORCHESTRATOR] Scheduled task delivered to ${channelId}`);
+      }
+    } catch (err) {
+      console.error('[ORCHESTRATOR] handleScheduledTask failed:', err);
+    }
   }
 
   // ============ Inbound Flow ============
