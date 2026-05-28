@@ -43,6 +43,21 @@ export type ConfigType = {
     nvidiaModel?: string;
     openrouterApiKey?: string;
     groqApiKey?: string;
+    telegramEnabled?: boolean;
+    telegramBotToken?: string;
+    telegramWebhookUrl?: string;
+    discordEnabled?: boolean;
+    discordBotToken?: string;
+    discordWebhookUrl?: string;
+    slackEnabled?: boolean;
+    slackBotToken?: string;
+    slackVerificationToken?: string;
+    slackWebhookUrl?: string;
+    whatsappEnabled?: boolean;
+    whatsappAccessToken?: string;
+    whatsappPhoneNumberId?: string;
+    whatsappWebhookUrl?: string;
+    webhookChannels?: Record<string, { enabled?: boolean; webhookUrl?: string }>;
   };
 };
 
@@ -78,7 +93,7 @@ export default function SettingsModal({
   setConfig: (cfg: ConfigType) => void;
 }) {
   const [local, setLocal]               = useState<ConfigType | null>(null);
-  const [tab, setTab]                   = useState<"profile" | "voice" | "modes" | "integrations" | "memory" | "history">("profile");
+  const [tab, setTab]                   = useState<"profile" | "voice" | "modes" | "integrations" | "channels" | "memory" | "history">("profile");
   const [conversations, setConversations] = useState<any[]>([]);
   const [saving, setSaving]             = useState(false);
   const [saved, setSaved]               = useState(false);
@@ -269,13 +284,14 @@ export default function SettingsModal({
     setLocal({ ...local, modes: [...local.modes, newMode], activeModeId: newMode.id });
   };
 
-  const tabs = [
-    { id: "profile",      label: "Profile",      icon: User },
-    { id: "voice",        label: "Voice",        icon: Volume2 },
-    { id: "modes",        label: "Modes",        icon: Sliders },
-    { id: "integrations", label: "Integrations", icon: Link2 },
-    { id: "memory",       label: "Memory",       icon: Brain },
-    { id: "history",      label: "History",      icon: Clock },
+  const settingsPages = [
+    { id: "profile", label: "Profile", icon: User, description: "Identity, wake word, and greeting" },
+    { id: "voice", label: "Voice", icon: Volume2, description: "Pick the assistant voice" },
+    { id: "modes", label: "Modes", icon: Sliders, description: "Safety and behavior profiles" },
+    { id: "integrations", label: "Integrations", icon: Link2, description: "GoDo, Obsidian, and coding agents" },
+    { id: "channels", label: "Channels", icon: Wifi, description: "Telegram, Discord, WhatsApp, and webhooks" },
+    { id: "memory", label: "Memory", icon: Brain, description: "Saved facts and patterns" },
+    { id: "history", label: "History", icon: Clock, description: "Recent conversations" },
   ] as const;
 
   const memoryByCategory = local.memory.reduce((acc, m) => {
@@ -283,6 +299,137 @@ export default function SettingsModal({
     acc[m.category].push(m);
     return acc;
   }, {} as Record<string, MemoryEntry[]>);
+
+  const integrations = local.integrations || {
+    godoEnabled: false,
+    obsidianEnabled: false,
+    obsidianPath: "",
+    customAgentEnabled: false,
+    codingProvider: "nim" as const,
+    nvidiaApiKey: "",
+    nvidiaModel: "auto",
+    openrouterApiKey: "",
+    groqApiKey: "",
+    telegramEnabled: false,
+    telegramBotToken: "",
+    telegramWebhookUrl: "",
+    discordEnabled: false,
+    discordBotToken: "",
+    discordWebhookUrl: "",
+    slackEnabled: false,
+    slackBotToken: "",
+    slackVerificationToken: "",
+    slackWebhookUrl: "",
+    whatsappEnabled: false,
+    whatsappAccessToken: "",
+    whatsappPhoneNumberId: "",
+    whatsappWebhookUrl: "",
+    webhookChannels: {},
+  };
+
+  const webhookChannelList: Array<{ id: string; label: string }> = [
+    { id: "teams", label: "Teams" },
+    { id: "imessage", label: "iMessage" },
+    { id: "matrix", label: "Matrix" },
+    { id: "signal", label: "Signal" },
+    { id: "viber", label: "Viber" },
+    { id: "sms", label: "SMS" },
+    { id: "email", label: "Email" },
+    { id: "web", label: "Web" },
+  ];
+
+  const integrationHubCards = [
+    {
+      id: "godo",
+      label: "GoDo",
+      description: "Local task manager",
+      active: !!integrations.godoEnabled,
+      actionLabel: integrations.godoEnabled ? "Disable" : "Enable",
+      onAction: () => updateIntegrationField("godoEnabled", !integrations.godoEnabled),
+    },
+    {
+      id: "obsidian",
+      label: "Obsidian",
+      description: "Vault read/write/search",
+      active: !!integrations.obsidianEnabled,
+      actionLabel: integrations.obsidianEnabled ? "Disable" : "Enable",
+      onAction: () => updateIntegrationField("obsidianEnabled", !integrations.obsidianEnabled),
+    },
+    {
+      id: "coding",
+      label: "Coding Agent",
+      description: "NVIDIA NIM / OpenRouter / Groq",
+      active: !!integrations.customAgentEnabled,
+      actionLabel: integrations.customAgentEnabled ? "Disable" : "Enable",
+      onAction: () => updateIntegrationField("customAgentEnabled", !integrations.customAgentEnabled),
+    },
+    {
+      id: "telegram",
+      label: "Telegram",
+      description: "Channel connector",
+      active: !!integrations.telegramEnabled,
+      actionLabel: "Configure",
+      onAction: () => setTab("channels"),
+    },
+    {
+      id: "discord",
+      label: "Discord",
+      description: "Channel connector",
+      active: !!integrations.discordEnabled,
+      actionLabel: "Configure",
+      onAction: () => setTab("channels"),
+    },
+    {
+      id: "slack",
+      label: "Slack",
+      description: "Channel connector",
+      active: !!integrations.slackEnabled,
+      actionLabel: "Configure",
+      onAction: () => setTab("channels"),
+    },
+    {
+      id: "whatsapp",
+      label: "WhatsApp",
+      description: "Cloud API / webhook",
+      active: !!integrations.whatsappEnabled,
+      actionLabel: "Configure",
+      onAction: () => setTab("channels"),
+    },
+    {
+      id: "bridges",
+      label: "Web Bridges",
+      description: "Teams, iMessage, Matrix, Signal, Viber, SMS, Email, Web",
+      active: Object.values(integrations.webhookChannels || {}).some((entry) => !!entry?.enabled),
+      actionLabel: "Configure",
+      onAction: () => setTab("channels"),
+    },
+  ];
+
+  const updateWebhookChannel = (channelId: string, next: { enabled?: boolean; webhookUrl?: string }) => {
+    setLocal({
+      ...local,
+      integrations: {
+        ...integrations,
+        webhookChannels: {
+          ...(integrations.webhookChannels || {}),
+          [channelId]: {
+            ...(integrations.webhookChannels?.[channelId] || {}),
+            ...next,
+          },
+        },
+      },
+    });
+  };
+
+  const updateIntegrationField = (field: string, value: string | boolean) => {
+    setLocal({
+      ...local,
+      integrations: {
+        ...integrations,
+        [field]: value,
+      } as any,
+    });
+  };
 
   const isStatusError   = recordingStatus.startsWith("⚠") || recordingStatus.startsWith("❌");
   const isStatusSuccess = recordingStatus.startsWith("✔") || recordingStatus.startsWith("✅");
@@ -327,35 +474,50 @@ export default function SettingsModal({
           </button>
         </div>
 
-        {/* ── Tabs ────────────────────────────────────────────────────── */}
-        <div className="flex gap-1 px-5 pt-3 pb-0 shrink-0">
-          {tabs.map(t => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`relative flex items-center gap-2 px-4 py-2 rounded-2xl text-xs font-semibold transition-all duration-200 ${
-                tab === t.id
-                  ? "text-violet-200"
-                  : "text-slate-500 hover:text-slate-300 hover:bg-white/4"
-              }`}
-              style={tab === t.id ? {
-                background: "linear-gradient(135deg, rgba(139,92,246,0.18), rgba(99,102,241,0.12))",
-                border: "1px solid rgba(139,92,246,0.28)",
-              } : { border: "1px solid transparent" }}
-            >
-              <t.icon size={12} />
-              {t.label}
-              {t.id === "memory" && local.memory.length > 0 && (
-                <span className="text-[9px] bg-violet-500/35 text-violet-300 px-1.5 py-0.5 rounded-full font-bold">
-                  {local.memory.length}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
+        {/* ── Page Layout ─────────────────────────────────────────────── */}
+        <div className="flex-1 min-h-0 overflow-hidden px-5 pt-4 pb-0">
+          <div className="grid h-full min-h-0 grid-cols-[15rem_minmax(0,1fr)] gap-4">
+            <aside className="min-h-0 overflow-y-auto space-y-2 pr-1">
+              <p className="text-[10px] uppercase tracking-widest text-slate-500 font-mono px-1">Settings Pages</p>
+              {settingsPages.map((page) => {
+                const Icon = page.icon;
+                const isActive = tab === page.id;
+                return (
+                  <button
+                    key={page.id}
+                    onClick={() => setTab(page.id)}
+                    className={`w-full text-left rounded-2xl px-3 py-3 transition-all duration-200 ${
+                      isActive ? "text-violet-200" : "text-slate-400 hover:text-slate-200"
+                    }`}
+                    style={isActive ? {
+                      background: "linear-gradient(135deg, rgba(139,92,246,0.18), rgba(99,102,241,0.12))",
+                      border: "1px solid rgba(139,92,246,0.28)",
+                    } : {
+                      background: "rgba(255,255,255,0.025)",
+                      border: "1px solid rgba(255,255,255,0.06)",
+                    }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className={`w-8 h-8 rounded-xl flex items-center justify-center ${isActive ? "bg-violet-500/20" : "bg-white/5"}`}>
+                        <Icon size={13} />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold truncate">{page.label}</p>
+                        <p className="text-[10px] text-slate-500 truncate">{page.description}</p>
+                      </div>
+                    </div>
+                    {page.id === "memory" && local.memory.length > 0 && (
+                      <span className="inline-flex mt-2 text-[9px] bg-violet-500/35 text-violet-300 px-1.5 py-0.5 rounded-full font-bold">
+                        {local.memory.length} saved
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </aside>
 
-        {/* ── Content ─────────────────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto p-5 min-h-0 space-y-4">
+            {/* ── Content ─────────────────────────────────────────────── */}
+            <div className="min-h-0 overflow-y-auto space-y-4 pr-1">
 
           {/* ════ PROFILE TAB ════════════════════════════════════════════ */}
           {tab === "profile" && (
@@ -589,6 +751,38 @@ export default function SettingsModal({
                 <p className="text-[11px] text-slate-500 mt-0.5">
                   Connect third-party tools and applications to expand Nova's capabilities.
                 </p>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {integrationHubCards.map((card) => (
+                  <div
+                    key={card.id}
+                    className="p-4 rounded-2xl space-y-3"
+                    style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-bold text-white">{card.label}</p>
+                        <p className="text-[10px] text-slate-500 mt-0.5">{card.description}</p>
+                      </div>
+                      <span
+                        className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
+                          card.active ? "text-emerald-300 bg-emerald-500/15" : "text-slate-400 bg-white/5"
+                        }`}
+                      >
+                        {card.active ? "Active" : "Inactive"}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={card.onAction}
+                      className="w-full px-3 py-2 rounded-xl text-[11px] font-semibold text-violet-200"
+                      style={{ background: "rgba(139,92,246,0.12)", border: "1px solid rgba(139,92,246,0.25)" }}
+                    >
+                      {card.actionLabel}
+                    </button>
+                  </div>
+                ))}
               </div>
 
               {/* GoDo Integration */}
@@ -875,15 +1069,241 @@ export default function SettingsModal({
                         style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.09)" }}
                       >
                         <option value="auto" className="bg-slate-900 text-white">Auto-Select Model (Recommended)</option>
-                        <option value="meta/llama-3.3-70b-instruct" className="bg-slate-900 text-white">NIM: Llama 3.3 70B</option>
-                        <option value="qwen/qwen3-coder-480b-a35b-instruct" className="bg-slate-900 text-white">NIM: Qwen 3 Coder 480B</option>
-                        <option value="deepseek-ai/deepseek-v4-pro" className="bg-slate-900 text-white">NIM: DeepSeek V4 Pro</option>
-                        <option value="openai/gpt-oss-120b" className="bg-slate-900 text-white">OpenRouter/Groq: GPT-OSS 120B</option>
+                        <option value="llama-3.1-8b-instant" className="bg-slate-900 text-white">Groq: Llama 3.1 8B Instant</option>
                         <option value="llama-3.3-70b-versatile" className="bg-slate-900 text-white">Groq: Llama 3.3 70B Versatile</option>
+                        <option value="openai/gpt-oss-20b" className="bg-slate-900 text-white">Groq: GPT-OSS 20B</option>
+                        <option value="qwen/qwen3-32b" className="bg-slate-900 text-white">Groq: Qwen3 32B</option>
+                        <option value="openrouter/free" className="bg-slate-900 text-white">OpenRouter: Auto Free Router</option>
+                        <option value="google/gemini-2.0-flash-exp:free" className="bg-slate-900 text-white">OpenRouter: Gemini 2.0 Flash (free)</option>
+                        <option value="meta-llama/llama-3.3-70b-instruct:free" className="bg-slate-900 text-white">OpenRouter: Llama 3.3 70B (free)</option>
+                        <option value="qwen/qwen3-coder:free" className="bg-slate-900 text-white">OpenRouter: Qwen3 Coder (free)</option>
+                        <option value="deepseek/deepseek-r1:free" className="bg-slate-900 text-white">OpenRouter: DeepSeek R1 (free)</option>
                       </select>
                     </div>
                   </div>
                 )}
+              </div>
+
+              <div
+                className="p-4 rounded-2xl space-y-3"
+                style={{
+                  background: "rgba(255, 255, 255, 0.02)",
+                  border: "1px solid rgba(255, 255, 255, 0.05)"
+                }}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-bold text-white">Messaging Channels</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">
+                      Configure Telegram, Discord, Slack, WhatsApp, Teams, Matrix, Signal, Viber, SMS, Email, and Webhooks from the Channels page.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setTab("channels")}
+                    className="px-3 py-2 rounded-xl text-[11px] font-semibold text-violet-200"
+                    style={{ background: "rgba(139,92,246,0.12)", border: "1px solid rgba(139,92,246,0.25)" }}
+                  >
+                    Open Channels
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {["Telegram", "Discord", "Slack", "WhatsApp", "Teams", "Matrix", "Signal", "Viber", "SMS", "Email", "Web"].map((channel) => (
+                    <span
+                      key={channel}
+                      className="px-2.5 py-1 rounded-full text-[10px] text-slate-300"
+                      style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}
+                    >
+                      {channel}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ════ CHANNELS TAB ═══════════════════════════════════════════ */}
+          {tab === "channels" && (
+            <div className="space-y-5">
+              <div>
+                <p className="text-sm font-semibold text-white">NanoClaw Channels</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Connect messaging platforms directly from the GUI. Tokens are written to .env and loaded on restart.
+                </p>
+              </div>
+
+              {[
+                {
+                  id: "telegram",
+                  label: "Telegram",
+                  toggle: integrations.telegramEnabled,
+                  toggleField: "telegramEnabled" as const,
+                  tokenLabel: "Bot Token",
+                  tokenValue: integrations.telegramBotToken || "",
+                  tokenPlaceholder: "123456:ABC-DEF...",
+                  webhookLabel: "Webhook URL",
+                  webhookValue: integrations.telegramWebhookUrl || "",
+                  webhookPlaceholder: "https://your-domain.com/webhooks/telegram",
+                  tokenField: "telegramBotToken" as const,
+                  webhookField: "telegramWebhookUrl" as const,
+                },
+                {
+                  id: "discord",
+                  label: "Discord",
+                  toggle: integrations.discordEnabled,
+                  toggleField: "discordEnabled" as const,
+                  tokenLabel: "Bot Token",
+                  tokenValue: integrations.discordBotToken || "",
+                  tokenPlaceholder: "Bot token",
+                  webhookLabel: "Webhook URL",
+                  webhookValue: integrations.discordWebhookUrl || "",
+                  webhookPlaceholder: "https://discord.com/api/webhooks/...",
+                  tokenField: "discordBotToken" as const,
+                  webhookField: "discordWebhookUrl" as const,
+                },
+                {
+                  id: "slack",
+                  label: "Slack",
+                  toggle: integrations.slackEnabled,
+                  toggleField: "slackEnabled" as const,
+                  tokenLabel: "Bot Token",
+                  tokenValue: integrations.slackBotToken || "",
+                  tokenPlaceholder: "xoxb-...",
+                  webhookLabel: "Webhook URL",
+                  webhookValue: integrations.slackWebhookUrl || "",
+                  webhookPlaceholder: "https://hooks.slack.com/services/...",
+                  tokenField: "slackBotToken" as const,
+                  webhookField: "slackWebhookUrl" as const,
+                  extraLabel: "Verification Token",
+                  extraValue: integrations.slackVerificationToken || "",
+                  extraPlaceholder: "Slack signing secret / verification token",
+                  extraField: "slackVerificationToken" as const,
+                },
+                {
+                  id: "whatsapp",
+                  label: "WhatsApp",
+                  toggle: integrations.whatsappEnabled,
+                  toggleField: "whatsappEnabled" as const,
+                  tokenLabel: "Access Token",
+                  tokenValue: integrations.whatsappAccessToken || "",
+                  tokenPlaceholder: "EAAG...",
+                  webhookLabel: "Webhook URL",
+                  webhookValue: integrations.whatsappWebhookUrl || "",
+                  webhookPlaceholder: "https://your-domain.com/webhooks/whatsapp",
+                  tokenField: "whatsappAccessToken" as const,
+                  webhookField: "whatsappWebhookUrl" as const,
+                  extraLabel: "Phone Number ID",
+                  extraValue: integrations.whatsappPhoneNumberId || "",
+                  extraPlaceholder: "123456789012345",
+                  extraField: "whatsappPhoneNumberId" as const,
+                },
+              ].map((channel) => (
+                <div
+                  key={channel.id}
+                  className="p-4 rounded-2xl space-y-3"
+                  style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-bold text-white">{channel.label}</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">Enable and configure from here.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => updateIntegrationField(channel.toggleField, !channel.toggle)}
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        channel.toggle ? "bg-violet-600" : "bg-slate-700"
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                          channel.toggle ? "translate-x-4" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  <div className="grid gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">{channel.tokenLabel}</label>
+                      <input
+                        type="password"
+                        value={channel.tokenValue}
+                        onChange={(e) => updateIntegrationField(channel.tokenField, e.target.value)}
+                        className="w-full px-3.5 py-2 rounded-xl text-xs text-white focus:outline-none transition-all font-mono"
+                        style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.09)" }}
+                        placeholder={channel.tokenPlaceholder}
+                      />
+                    </div>
+
+                    {"extraField" in channel && (
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">{channel.extraLabel}</label>
+                        <input
+                          type="text"
+                          value={channel.extraValue}
+                          onChange={(e) => updateIntegrationField(channel.extraField, e.target.value)}
+                          className="w-full px-3.5 py-2 rounded-xl text-xs text-white focus:outline-none transition-all font-mono"
+                          style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.09)" }}
+                          placeholder={channel.extraPlaceholder}
+                        />
+                      </div>
+                    )}
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">{channel.webhookLabel}</label>
+                      <input
+                        type="text"
+                        value={channel.webhookValue}
+                        onChange={(e) => updateIntegrationField(channel.webhookField, e.target.value)}
+                        className="w-full px-3.5 py-2 rounded-xl text-xs text-white focus:outline-none transition-all font-mono"
+                        style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.09)" }}
+                        placeholder={channel.webhookPlaceholder}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              <div className="p-4 rounded-2xl space-y-3" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
+                <div>
+                  <p className="text-xs font-bold text-white">Webhook Channels</p>
+                  <p className="text-[10px] text-slate-500 mt-0.5">For Teams, iMessage bridges, Matrix, Signal, Viber, SMS, Email, and Web endpoints.</p>
+                </div>
+
+                <div className="grid gap-3">
+                  {webhookChannelList.map((entry) => {
+                    const current = integrations.webhookChannels?.[entry.id] || { enabled: false, webhookUrl: "" };
+                    return (
+                      <div key={entry.id} className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}>
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-xs font-semibold text-white capitalize">{entry.label}</p>
+                          <button
+                            type="button"
+                            onClick={() => updateWebhookChannel(entry.id, { enabled: !current.enabled })}
+                            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                              current.enabled ? "bg-violet-600" : "bg-slate-700"
+                            }`}
+                          >
+                            <span
+                              className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                current.enabled ? "translate-x-4" : "translate-x-0"
+                              }`}
+                            />
+                          </button>
+                        </div>
+                        <input
+                          type="text"
+                          value={current.webhookUrl || ""}
+                          onChange={(e) => updateWebhookChannel(entry.id, { webhookUrl: e.target.value })}
+                          className="mt-2 w-full px-3.5 py-2 rounded-xl text-xs text-white focus:outline-none transition-all font-mono"
+                          style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.09)" }}
+                          placeholder={`https://your-domain.com/webhooks/${entry.id}`}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           )}
@@ -1092,6 +1512,8 @@ export default function SettingsModal({
               </div>
             </div>
           )}
+            </div>
+          </div>
         </div>
 
         {/* ── Footer ──────────────────────────────────────────────────── */}

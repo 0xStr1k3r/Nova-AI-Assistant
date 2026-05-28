@@ -3,6 +3,9 @@
  * Entry point for multi-channel routing system
  */
 
+import { getAdapterRegistry } from './channel-adapters/registry';
+import { getOrchestrator } from './orchestrator';
+
 export { default as ChannelRouter, getRouter } from './router';
 export type {
   Message,
@@ -22,6 +25,8 @@ export { getAdapterRegistry, createNewRegistry } from './channel-adapters/regist
 export { default as TelegramAdapter } from './channel-adapters/telegram';
 export { default as DiscordAdapter } from './channel-adapters/discord';
 export { default as SlackAdapter } from './channel-adapters/slack';
+export { default as WhatsAppAdapter } from './channel-adapters/whatsapp';
+export { default as WebhookAdapter } from './channel-adapters/webhook';
 
 export { default as TaskScheduler, getTaskScheduler } from './task-scheduler';
 export type { ScheduledTask } from './task-scheduler';
@@ -35,7 +40,11 @@ export { default as SystemObserver, getSystemObserver } from './system-observer'
 export async function initializeNanoClaw(): Promise<void> {
   console.log('[NANOCLAW] Initializing multi-channel router...');
 
+  const agentGroupId = process.env.AGENT_GROUP_ID || 'default';
+  const registry = getAdapterRegistry();
+  await registry.initializeFromEnv(agentGroupId);
   const orchestrator = getOrchestrator();
   console.log('[NANOCLAW] ✅ NanoClaw router ready');
-  console.log(`[NANOCLAW] Enabled channels: ${getAdapterRegistry().getStats().enabled.join(', ')}`);
+  console.log(`[NANOCLAW] Enabled channels: ${registry.getStats().enabled.join(', ')}`);
+  console.log(`[NANOCLAW] Orchestrator ready: ${!!orchestrator}`);
 }

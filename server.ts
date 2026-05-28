@@ -10,7 +10,7 @@ import { exec } from "child_process";
 import util from "util";
 import {
   getDb, saveDb, addSmartMemory, clearMemory, formatMemoryForPrompt,
-  NovaConfig, MemoryEntry,
+  NovaConfig, MemoryEntry, IntegrationsConfig,
   ConversationMessage, ConversationSession, saveConversationSession,
   getConversationSessions, clearConversationSessions, formatRecentConversationsForPrompt,
 } from "./src/server/db";
@@ -98,6 +98,8 @@ import { setupContainerAPI } from "./src/server/container-api";
 import { setupWorkflowAPI } from "./src/server/workflow-api";
 import { setupProactiveAPI } from "./src/server/proactive-api";
 import { setupVoiceAPI } from "./src/server/voice-api";
+import { setupDashboardAPI } from "./src/server/dashboard-api";
+import { initializeNanoClaw, getAdapterRegistry } from "./src/server/nanoclaw";
 
 const execAsync = util.promisify(exec);
 
@@ -139,6 +141,10 @@ function writeApiKeyToEnv(envKey: string, key: string) {
 // Helper to write NVIDIA_API_KEY directly into the local .env file
 function writeNvidiaApiKeyToEnv(key: string) {
   writeApiKeyToEnv("NVIDIA_API_KEY", key);
+}
+
+function writeOptionalEnvKey(envKey: string, value?: string) {
+  writeApiKeyToEnv(envKey, value ?? "");
 }
 
 // ─── Model Constants (optimized for free-tier rate limits) ────────────────────
@@ -215,6 +221,98 @@ ${transcript.substring(0, 3000)}`;
   } catch (err) {
     console.error("[MEMORY EXTRACT ERROR]", err);
   }
+}
+
+function summarizeBehaviorFromConversations(): string {
+  const sessions = getConversationSessions().slice(0, 5);
+  if (sessions.length === 0) return "No prior conversation behavior available yet.";
+
+  const userMessages: string[] = [];
+  for (const session of sessions) {
+    for (const message of session.messages) {
+      const role = message.role.toLowerCase();
+      if (role === "user" || role === "chiru" || role === "user:") {
+        userMessages.push(message.text);
+      }
+    }
+  }
+
+  const combined = userMessages.join(" ").toLowerCase();
+  const isConcise = userMessages.length > 0 && userMessages.reduce((sum, msg) => sum + msg.length, 0) / userMessages.length < 180;
+  const featureHeavy = /(feature|integrat|implement|add|create|build|connect|gui|dashboard|channel|agent|memory|model)/g.test(combined);
+  const iterative = /(continue|next|now|also|then|make sure|check|fix|refactor|update)/g.test(combined);
+  const automationHeavy = /(telegram|discord|whatsapp|slack|browser|workflow|task|assistant|voice|automation|nanoclaw)/g.test(combined);
+
+  const traits = [
+    isConcise ? "prefers concise interaction" : "tolerates longer responses when needed",
+    featureHeavy ? "focuses on shipping features and integrations" : "mixes general and feature work",
+    iterative ? "works in iterative follow-up steps" : "often requests standalone tasks",
+    automationHeavy ? "frequently asks for automation and assistant tooling" : "uses the assistant for general tasks",
+  ];
+
+  return `Behavior summary: ${traits.join("; ")}.`;
+}
+
+async function buildAwarenessContext(userName: string): Promise<string> {
+  const db = getDb();
+  const registry = getAdapterRegistry();
+  const stats = registry.getStats();
+  const memoryStats = await getMemoryStats().catch(() => null);
+  const semanticBehavior = await getSemanticContextForPrompt(
+    "user behavior preferences concise direct implementation integrations automation assistant UI agent memory",
+    4
+  );
+  const semanticIntegrations = await getSemanticContextForPrompt(
+    "telegram discord whatsapp slack obsidian godo openrouter groq nanoclaw integration channels",
+    4
+  );
+
+  const integrations = (db.integrations || {}) as IntegrationsConfig;
+  const activeChannels = stats.enabled.length > 0 ? stats.enabled.join(", ") : "none yet";
+  const configuredChannels = [
+    integrations.telegramEnabled ? "telegram" : null,
+    integrations.discordEnabled ? "discord" : null,
+    integrations.whatsappEnabled ? "whatsapp" : null,
+    integrations.slackEnabled ? "slack" : null,
+    integrations.webhookChannels
+      ? Object.entries(integrations.webhookChannels)
+          .filter(([, value]) => !!value?.enabled)
+          .map(([key]) => key)
+          .join(", ")
+      : "",
+  ].filter(Boolean).join(", ") || "none yet";
+
+  const activeProviders = [
+    process.env.NVIDIA_API_KEY || process.env.NIM_API_KEY || integrations.nvidiaApiKey ? "NVIDIA/NIM" : null,
+    process.env.OPENROUTER_API_KEY || integrations.openrouterApiKey ? "OpenRouter" : null,
+    process.env.GROQ_API_KEY || integrations.groqApiKey ? "Groq" : null,
+  ].filter(Boolean).join(", ") || "none";
+
+  const conversationCount = getConversationSessions().length;
+  const memoryCount = db.memory.length;
+  const voiceProfiles = db.userVoiceProfiles?.length || 0;
+
+  return `\n\n--- RUNTIME AWARENESS ---
+User: ${userName}
+Active mode: ${db.modes.find((m: any) => m.id === db.activeModeId)?.name || "Assistant"}
+Installed integrations:
+- GoDo: ${integrations.godoEnabled ? "enabled" : "disabled"}
+- Obsidian: ${integrations.obsidianEnabled ? `enabled at ${integrations.obsidianPath || "unset path"}` : "disabled"}
+- Coding provider: ${integrations.codingProvider || "nim"}
+- AI keys available: ${activeProviders}
+Live NanoClaw status:
+- Active channels: ${activeChannels}
+- Configured channels: ${configuredChannels}
+- Agent groups: ${stats.total}
+Database awareness:
+- Memory entries: ${memoryCount}
+- Conversation sessions: ${conversationCount}
+- Voice profiles: ${voiceProfiles}
+- Semantic memory stats: ${memoryStats ? JSON.stringify(memoryStats) : "unavailable"}
+${summarizeBehaviorFromConversations()}
+${semanticBehavior ? `\nRelevant behavior memory:\n${semanticBehavior}` : ""}
+${semanticIntegrations ? `\nRelevant integration memory:\n${semanticIntegrations}` : ""}
+---`;
 }
 
 // ─── Web Search & Fetching Helpers ─────────────────────────────────────────────
@@ -473,8 +571,12 @@ async function startServer() {
   setupWorkflowAPI(app);
   setupProactiveAPI(app);
   setupVoiceAPI(app);
+  setupDashboardAPI(app);
   setupWebSocketHandler(wss);
   console.log('[SERVER] Phase 4 APIs ready');
+
+  await initializeNanoClaw();
+  console.log('[SERVER] NanoClaw initialized');
   // ───────────────────────────────────────────────────────────────────────
 
   const ai = new GoogleGenAI({
@@ -518,12 +620,15 @@ async function startServer() {
     const memoryContext = formatMemoryForPrompt(db.memory);
     const recentConversationsContext = formatRecentConversationsForPrompt();
     
+    const awarenessContext = await buildAwarenessContext(userName);
+
     // Get semantic memory context for this user query
     let semanticContext = "";
     try {
-      if (userMessage && userMessage.length > 0) {
-        semanticContext = await getSemanticContextForPrompt(userMessage, 3);
-      }
+      semanticContext = await getSemanticContextForPrompt(
+        "user preferences behavior style recent request context",
+        3
+      );
     } catch (error) {
       console.error("[SEMANTIC_MEMORY] Error fetching context:", error);
     }
@@ -536,6 +641,7 @@ async function startServer() {
     if (integrations.obsidianEnabled && integrations.obsidianPath) {
       integrationsPrompt += `\n- Obsidian Notes Vault is ACTIVE at path: "${integrations.obsidianPath}". You can query, read, create, update, or search markdown notes inside this folder using standard shell commands (grep, cat, echo, find) via runLinuxCommand.`;
     }
+    integrationsPrompt += `\n- NanoClaw multi-channel orchestration is ACTIVE in this project. Use it for agent routing, scheduled tasks, channel delivery, proactive observer events, and tenant/workspace-aware workflows when the user request touches messaging or automation.`;
 
     const assistantName = db.wakeWord.charAt(0).toUpperCase() + db.wakeWord.slice(1);
     const systemInstruction = `${activeMode.instruction}
@@ -547,7 +653,7 @@ CAPABILITIES:
 - You have the runLinuxCommand tool to run bash commands on your host system. Since the assistant daemon runs as a background service with root privileges and has complete passwordless sudo authority, you have full systemwide administration privileges to run sudo commands or manage services. Your command execution is guided by the selected operating mode.${integrationsPrompt}
 - You have the runCodingAgent tool to spawn custom, local autonomous AI developer coding agents in the background to handle coding, file editing, or deep research tasks. You also have getCodingAgentStatus to query agent execution progress and status logs.
   1. MULTIPLE AGENTS: You can spawn multiple concurrent autonomous coding agents to run in the background.
-  2. MODEL SELECTION: You can specify a particular model from the available NVIDIA NIM models depending on task complexity (e.g. fastest models like 'meta/llama-3.1-8b-instruct' or 'mistralai/ministral-14b-instruct-2512' for simpler checks, or powerful coding models like 'qwen/qwen3-coder-480b-a35b-instruct' for complex algorithms). Set it to 'auto' to let the system auto-classify the complexity.
+  2. MODEL SELECTION: You can specify a particular model from the available providers depending on task complexity. Prefer the smallest free-tier model that fits the job. Use fast chat models for simple requests, stronger reasoning models for analysis, and vision-capable models only when images or screenshots are involved. Set it to 'auto' to let the system auto-classify the complexity.
   3. PROTOCOL FOR DELEGATING TO CODING AGENTS: When calling runCodingAgent, do NOT send vague, short, or single-line prompts. You MUST plan the task thoroughly first and construct a highly detailed, comprehensive prompt so the coding agent gets the full picture to complete the task headlessly. Your entire planned instruction prompt will be automatically wrapped and escaped inside double quotes (" ") when executed in the command line, ensuring a single cohesive, perfectly parsed execution block:
      - GOAL: Clearly define the objective of the changes.
      - CONTEXT: List all files to be read/modified, active types/interfaces, or backend schemas.
@@ -562,6 +668,7 @@ CAPABILITIES:
   5. NOTIFICATIONS: Manage desktop notifications using \`manageSystemNotifications\` (send a notification popup, clear/close all notifications, or retrieve notification history).
   6. APPLICATIONS: Interact with system programs using \`manageApplications\` (list/search installed \`.desktop\` applications matching a query, and launch applications in the background).
   7. DISPLAY INFO: Get display/desktop environment details (protocol, window manager, dimensions) using \`getDisplayInfo\`.
+  8. NANOCLAW: Message routing, scheduled tasks, channel adapters, observer events, and tenant analytics are part of the active system. Treat them as first-class capabilities when the user request involves messaging, orchestration, or automation.
 VOICE RULES (non-negotiable):
 - Max 2-3 SHORT sentences per response. You are being spoken aloud.
 - NEVER say "Is there anything else I can help you with?" or any variant of that. EVER.
@@ -570,6 +677,7 @@ VOICE RULES (non-negotiable):
 - When the session starts, say ONLY: "${greeting}" — nothing else. Just that greeting.
 ${memoryContext}
 ${recentConversationsContext}
+${awarenessContext}
 ${semanticContext ? `\n\n📚 SEMANTIC MEMORY CONTEXT (Recently retrieved relevant information):\n${semanticContext}` : ""}`;
 
     const functionDeclarations: any[] = [
@@ -1978,11 +2086,50 @@ ${semanticContext ? `\n\n📚 SEMANTIC MEMORY CONTEXT (Recently retrieved releva
         nvidiaModel: "auto",
         openrouterApiKey: "",
         groqApiKey: "",
+        telegramEnabled: false,
+        telegramBotToken: "",
+        telegramWebhookUrl: "",
+        discordEnabled: false,
+        discordBotToken: "",
+        discordWebhookUrl: "",
+        slackEnabled: false,
+        slackBotToken: "",
+        slackVerificationToken: "",
+        slackWebhookUrl: "",
+        whatsappEnabled: false,
+        whatsappAccessToken: "",
+        whatsappPhoneNumberId: "",
+        whatsappWebhookUrl: "",
+        webhookChannels: {},
       };
     }
     config.integrations.nvidiaApiKey = process.env.NVIDIA_API_KEY || process.env.NIM_API_KEY || "";
     config.integrations.openrouterApiKey = process.env.OPENROUTER_API_KEY || "";
     config.integrations.groqApiKey = process.env.GROQ_API_KEY || "";
+    config.integrations.telegramEnabled = !!process.env.TELEGRAM_BOT_TOKEN;
+    config.integrations.telegramBotToken = process.env.TELEGRAM_BOT_TOKEN || "";
+    config.integrations.telegramWebhookUrl = process.env.TELEGRAM_WEBHOOK_URL || "";
+    config.integrations.discordEnabled = !!process.env.DISCORD_BOT_TOKEN;
+    config.integrations.discordBotToken = process.env.DISCORD_BOT_TOKEN || "";
+    config.integrations.discordWebhookUrl = process.env.DISCORD_WEBHOOK_URL || "";
+    config.integrations.slackEnabled = !!process.env.SLACK_BOT_TOKEN && !!process.env.SLACK_VERIFICATION_TOKEN;
+    config.integrations.slackBotToken = process.env.SLACK_BOT_TOKEN || "";
+    config.integrations.slackVerificationToken = process.env.SLACK_VERIFICATION_TOKEN || "";
+    config.integrations.slackWebhookUrl = process.env.SLACK_WEBHOOK_URL || "";
+    config.integrations.whatsappEnabled = !!process.env.WHATSAPP_ACCESS_TOKEN && !!process.env.WHATSAPP_PHONE_NUMBER_ID;
+    config.integrations.whatsappAccessToken = process.env.WHATSAPP_ACCESS_TOKEN || "";
+    config.integrations.whatsappPhoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID || "";
+    config.integrations.whatsappWebhookUrl = process.env.WHATSAPP_WEBHOOK_URL || "";
+    config.integrations.webhookChannels = {
+      teams: { enabled: !!process.env.TEAMS_WEBHOOK_URL, webhookUrl: process.env.TEAMS_WEBHOOK_URL || "" },
+      imessage: { enabled: !!process.env.IMESSAGE_WEBHOOK_URL, webhookUrl: process.env.IMESSAGE_WEBHOOK_URL || "" },
+      matrix: { enabled: !!process.env.MATRIX_WEBHOOK_URL, webhookUrl: process.env.MATRIX_WEBHOOK_URL || "" },
+      signal: { enabled: !!process.env.SIGNAL_WEBHOOK_URL, webhookUrl: process.env.SIGNAL_WEBHOOK_URL || "" },
+      viber: { enabled: !!process.env.VIBER_WEBHOOK_URL, webhookUrl: process.env.VIBER_WEBHOOK_URL || "" },
+      sms: { enabled: !!process.env.SMS_WEBHOOK_URL, webhookUrl: process.env.SMS_WEBHOOK_URL || "" },
+      email: { enabled: !!process.env.EMAIL_WEBHOOK_URL, webhookUrl: process.env.EMAIL_WEBHOOK_URL || "" },
+      web: { enabled: !!process.env.WEB_WEBHOOK_URL, webhookUrl: process.env.WEB_WEBHOOK_URL || "" },
+    };
     res.json(config);
   });
 
@@ -2021,6 +2168,25 @@ ${semanticContext ? `\n\n📚 SEMANTIC MEMORY CONTEXT (Recently retrieved releva
         newConfig.integrations.groqApiKey = "";
       }
     }
+    if (req.body.integrations) {
+      const integrations = req.body.integrations;
+      writeOptionalEnvKey("TELEGRAM_BOT_TOKEN", integrations.telegramEnabled ? integrations.telegramBotToken : "");
+      writeOptionalEnvKey("TELEGRAM_WEBHOOK_URL", integrations.telegramEnabled ? integrations.telegramWebhookUrl : "");
+      writeOptionalEnvKey("DISCORD_BOT_TOKEN", integrations.discordEnabled ? integrations.discordBotToken : "");
+      writeOptionalEnvKey("DISCORD_WEBHOOK_URL", integrations.discordEnabled ? integrations.discordWebhookUrl : "");
+      writeOptionalEnvKey("SLACK_BOT_TOKEN", integrations.slackEnabled ? integrations.slackBotToken : "");
+      writeOptionalEnvKey("SLACK_VERIFICATION_TOKEN", integrations.slackEnabled ? integrations.slackVerificationToken : "");
+      writeOptionalEnvKey("SLACK_WEBHOOK_URL", integrations.slackEnabled ? integrations.slackWebhookUrl : "");
+      writeOptionalEnvKey("WHATSAPP_ACCESS_TOKEN", integrations.whatsappEnabled ? integrations.whatsappAccessToken : "");
+      writeOptionalEnvKey("WHATSAPP_PHONE_NUMBER_ID", integrations.whatsappEnabled ? integrations.whatsappPhoneNumberId : "");
+      writeOptionalEnvKey("WHATSAPP_WEBHOOK_URL", integrations.whatsappEnabled ? integrations.whatsappWebhookUrl : "");
+
+      const webhookChannels = (integrations.webhookChannels || {}) as Record<string, { enabled?: boolean; webhookUrl?: string }>;
+      for (const [channel, entry] of Object.entries(webhookChannels)) {
+        const envKey = `${channel.toUpperCase()}_WEBHOOK_URL`;
+        writeOptionalEnvKey(envKey, entry.enabled ? entry.webhookUrl || "" : "");
+      }
+    }
 
     // Validate Obsidian vault path if enabled
     if (newConfig.integrations?.obsidianEnabled) {
@@ -2048,6 +2214,26 @@ ${semanticContext ? `\n\n📚 SEMANTIC MEMORY CONTEXT (Recently retrieved releva
       mergedResponse.integrations.nvidiaApiKey = process.env.NVIDIA_API_KEY || process.env.NIM_API_KEY || "";
       mergedResponse.integrations.openrouterApiKey = process.env.OPENROUTER_API_KEY || "";
       mergedResponse.integrations.groqApiKey = process.env.GROQ_API_KEY || "";
+      mergedResponse.integrations.telegramBotToken = process.env.TELEGRAM_BOT_TOKEN || "";
+      mergedResponse.integrations.telegramWebhookUrl = process.env.TELEGRAM_WEBHOOK_URL || "";
+      mergedResponse.integrations.discordBotToken = process.env.DISCORD_BOT_TOKEN || "";
+      mergedResponse.integrations.discordWebhookUrl = process.env.DISCORD_WEBHOOK_URL || "";
+      mergedResponse.integrations.slackBotToken = process.env.SLACK_BOT_TOKEN || "";
+      mergedResponse.integrations.slackVerificationToken = process.env.SLACK_VERIFICATION_TOKEN || "";
+      mergedResponse.integrations.slackWebhookUrl = process.env.SLACK_WEBHOOK_URL || "";
+      mergedResponse.integrations.whatsappAccessToken = process.env.WHATSAPP_ACCESS_TOKEN || "";
+      mergedResponse.integrations.whatsappPhoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID || "";
+      mergedResponse.integrations.whatsappWebhookUrl = process.env.WHATSAPP_WEBHOOK_URL || "";
+      mergedResponse.integrations.webhookChannels = {
+        teams: { enabled: !!process.env.TEAMS_WEBHOOK_URL, webhookUrl: process.env.TEAMS_WEBHOOK_URL || "" },
+        imessage: { enabled: !!process.env.IMESSAGE_WEBHOOK_URL, webhookUrl: process.env.IMESSAGE_WEBHOOK_URL || "" },
+        matrix: { enabled: !!process.env.MATRIX_WEBHOOK_URL, webhookUrl: process.env.MATRIX_WEBHOOK_URL || "" },
+        signal: { enabled: !!process.env.SIGNAL_WEBHOOK_URL, webhookUrl: process.env.SIGNAL_WEBHOOK_URL || "" },
+        viber: { enabled: !!process.env.VIBER_WEBHOOK_URL, webhookUrl: process.env.VIBER_WEBHOOK_URL || "" },
+        sms: { enabled: !!process.env.SMS_WEBHOOK_URL, webhookUrl: process.env.SMS_WEBHOOK_URL || "" },
+        email: { enabled: !!process.env.EMAIL_WEBHOOK_URL, webhookUrl: process.env.EMAIL_WEBHOOK_URL || "" },
+        web: { enabled: !!process.env.WEB_WEBHOOK_URL, webhookUrl: process.env.WEB_WEBHOOK_URL || "" },
+      };
     }
     res.json({ success: true, config: mergedResponse }); // Return config with env-injected key
   });

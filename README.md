@@ -2,6 +2,13 @@
 
 Nova is a high-tech personal AI voice assistant powered by the **Gemini Live API**. It features real-time voice conversation, browser-native wake-word and microphone access, dynamic operating modes, a smart memory database, and automatic web-search/page-extraction capabilities.
 
+For a concise overview of all features, see [features.md](features.md).
+
+For step-by-step installation and integration setup, see [setup.md](setup.md).
+
+Optional provider keys and model overrides can be added in `.env` using `OPENROUTER_API_KEY` and `GROQ_API_KEY`.
+NanoClaw channel connectors can be configured from the UI under **Settings → Channels**.
+
 ---
 
 ## Key Features

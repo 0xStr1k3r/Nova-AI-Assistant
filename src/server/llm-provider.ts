@@ -6,7 +6,7 @@
  */
 
 export type AssistantProvider = 'groq' | 'openrouter' | 'ollama';
-export type TaskProvider = 'gemini' | 'nim' | 'openrouter';
+export type TaskProvider = 'gemini' | 'nim' | 'openrouter' | 'groq';
 
 export interface LLMMessage {
   role: 'user' | 'assistant' | 'system';
@@ -26,6 +26,19 @@ export interface TaskResponse {
   tokensUsed?: { input: number; output: number };
   costUSD?: number;
 }
+
+const GROQ_FREE_MODELS = {
+  chat: process.env.GROQ_CHAT_MODEL || 'llama-3.1-8b-instant',
+  code: process.env.GROQ_CODE_MODEL || 'qwen/qwen3-32b',
+  analysis: process.env.GROQ_ANALYSIS_MODEL || 'llama-3.3-70b-versatile',
+};
+
+const OPENROUTER_FREE_MODELS = {
+  chat: process.env.OPENROUTER_CHAT_MODEL || 'openrouter/free',
+  code: process.env.OPENROUTER_CODE_MODEL || 'qwen/qwen3-coder:free',
+  analysis: process.env.OPENROUTER_ANALYSIS_MODEL || 'deepseek/deepseek-r1:free',
+  vision: process.env.OPENROUTER_VISION_MODEL || 'google/gemini-2.0-flash-exp:free',
+};
 
 // ============ LIGHTWEIGHT ASSISTANT LAYER ============
 
@@ -112,7 +125,7 @@ class AssistantLLM {
     const response = await axios.default.post(
       'https://api.groq.com/openai/v1/chat/completions',
       {
-        model: 'mixtral-8x7b-32768', // Fast, free
+        model: GROQ_FREE_MODELS.chat,
         messages: messages.map(m => ({
           role: m.role,
           content: m.content,
@@ -134,9 +147,9 @@ class AssistantLLM {
 
     const axios = await import('axios');
     const response = await axios.default.post(
-      'https://openrouter.io/api/v1/chat/completions',
+      'https://openrouter.ai/api/v1/chat/completions',
       {
-        model: 'deepseek/deepseek-chat', // Cheap, lightweight
+        model: OPENROUTER_FREE_MODELS.chat,
         messages: messages.map(m => ({
           role: m.role,
           content: m.content,
@@ -194,6 +207,7 @@ class TaskLLM {
   private nimApiKey?: string;
   private nimBaseUrl?: string;
   private openrouterApiKey?: string;
+  private groqApiKey?: string;
   private primaryTask: TaskProvider = 'gemini';
   private taskCache: Map<string, TaskResponse> = new Map();
 
@@ -202,13 +216,38 @@ class TaskLLM {
     this.nimApiKey = process.env.NIM_API_KEY;
     this.nimBaseUrl = process.env.NIM_BASE_URL;
     this.openrouterApiKey = process.env.OPENROUTER_API_KEY;
+    this.groqApiKey = process.env.GROQ_API_KEY;
 
     // Auto-select primary
     if (this.nimApiKey && this.nimBaseUrl) this.primaryTask = 'nim'; // Local = free
+    else if (this.groqApiKey) this.primaryTask = 'groq';
     else if (this.geminiApiKey) this.primaryTask = 'gemini';
     else if (this.openrouterApiKey) this.primaryTask = 'openrouter';
 
     console.log(`[TASK-LLM] Primary: ${this.primaryTask}`);
+  }
+
+  private resolveTaskProvider(taskType: 'code' | 'analysis' | 'vision'): TaskProvider {
+    if (taskType === 'vision') {
+      if (this.geminiApiKey) return 'gemini';
+      if (this.openrouterApiKey) return 'openrouter';
+      if (this.nimApiKey && this.nimBaseUrl) return 'nim';
+      return this.primaryTask;
+    }
+
+    if (taskType === 'code') {
+      if (this.nimApiKey && this.nimBaseUrl) return 'nim';
+      if (this.groqApiKey) return 'groq';
+      if (this.openrouterApiKey) return 'openrouter';
+      if (this.geminiApiKey) return 'gemini';
+      return this.primaryTask;
+    }
+
+    if (this.nimApiKey && this.nimBaseUrl) return 'nim';
+    if (this.groqApiKey) return 'groq';
+    if (this.openrouterApiKey) return 'openrouter';
+    if (this.geminiApiKey) return 'gemini';
+    return this.primaryTask;
   }
 
   /**
@@ -221,7 +260,7 @@ class TaskLLM {
     provider?: TaskProvider,
     fallback: boolean = true
   ): Promise<TaskResponse> {
-    const target = provider || this.primaryTask;
+    const target = provider || this.resolveTaskProvider(taskType);
     const cacheKey = JSON.stringify([target, taskType, messages]);
 
     if (this.taskCache.has(cacheKey)) {
@@ -244,6 +283,9 @@ class TaskLLM {
           break;
         case 'nim':
           ({ text, tokensUsed } = await this.nimTask(messages, taskType));
+          break;
+        case 'groq':
+          ({ text, costUSD } = await this.groqTask(messages, taskType));
           break;
         case 'openrouter':
           ({ text, costUSD } = await this.openrouterTask(messages, taskType));
@@ -281,7 +323,7 @@ class TaskLLM {
     if (!this.geminiApiKey) throw new Error('GEMINI_API_KEY not set');
 
     const { GoogleGenerativeAI } = await import('@google/generative-ai');
-    const client = new GoogleGenerativeAI({ apiKey: this.geminiApiKey });
+    const client = new GoogleGenerativeAI(this.geminiApiKey);
     const model = client.getGenerativeModel({
       model:
         taskType === 'vision'
@@ -347,6 +389,44 @@ class TaskLLM {
     };
   }
 
+  private async groqTask(
+    messages: LLMMessage[],
+    taskType: string
+  ): Promise<TaskResponse> {
+    if (!this.groqApiKey) throw new Error('GROQ_API_KEY not set');
+
+    const axios = await import('axios');
+    const modelMap: Record<string, string> = {
+      code: GROQ_FREE_MODELS.code,
+      analysis: GROQ_FREE_MODELS.analysis,
+      vision: GROQ_FREE_MODELS.analysis,
+    };
+
+    const response = await axios.default.post(
+      'https://api.groq.com/openai/v1/chat/completions',
+      {
+        model: modelMap[taskType] || GROQ_FREE_MODELS.analysis,
+        messages: messages.map(m => ({
+          role: m.role,
+          content: m.content,
+        })),
+        temperature: 0.7,
+        max_tokens: 4096,
+      },
+      {
+        headers: { Authorization: `Bearer ${this.groqApiKey}` },
+        timeout: 60000,
+      }
+    );
+
+    return {
+      text: response.data.choices[0].message.content,
+      provider: 'groq',
+      tokensUsed: response.data.usage,
+      costUSD: 0,
+    };
+  }
+
   private async openrouterTask(
     messages: LLMMessage[],
     taskType: string
@@ -356,15 +436,15 @@ class TaskLLM {
 
     const axios = await import('axios');
     const modelMap: Record<string, string> = {
-      code: 'deepseek/deepseek-coder', // Code-optimized
-      analysis: 'meta-llama/llama-2-70b-chat-hf', // Bigger model
-      vision: 'gpt-4-vision', // Vision
+      code: OPENROUTER_FREE_MODELS.code,
+      analysis: OPENROUTER_FREE_MODELS.analysis,
+      vision: OPENROUTER_FREE_MODELS.vision,
     };
 
     const response = await axios.default.post(
-      'https://openrouter.io/api/v1/chat/completions',
+      'https://openrouter.ai/api/v1/chat/completions',
       {
-        model: modelMap[taskType] || 'meta-llama/llama-2-70b-chat-hf',
+        model: modelMap[taskType] || OPENROUTER_FREE_MODELS.analysis,
         messages: messages.map(m => ({
           role: m.role,
           content: m.content,
@@ -400,6 +480,7 @@ class TaskLLM {
       primary: this.primaryTask,
       available: [
         this.nimApiKey && 'nim (free)',
+        this.groqApiKey && 'groq (free tier)',
         this.geminiApiKey && 'gemini',
         this.openrouterApiKey && 'openrouter',
       ].filter(Boolean),

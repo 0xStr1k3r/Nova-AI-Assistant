@@ -18,83 +18,108 @@ export default function InitOverlay({
       {!hasInteracted && (
         <motion.div
           className="absolute inset-0 z-50 flex items-center justify-center overflow-hidden"
-          style={{
-            background: "radial-gradient(circle at center, #090918 0%, #030308 100%)",
-            backdropFilter: "blur(28px)",
-          }}
+          style={{ background: "#0a0c10", backdropFilter: "blur(28px)" }}
           initial={{ opacity: 1 }}
-          exit={{ opacity: 0, transition: { duration: 0.6, ease: "easeInOut" } }}
+          exit={{ opacity: 0, transition: { duration: 0.5, ease: "easeInOut" } }}
         >
-          {/* Cyber HUD particle grid background decoration */}
-          <div className="absolute inset-0 opacity-[0.03] pointer-events-none">
-            <div
-              className="w-full h-full"
-              style={{
-                backgroundImage:
-                  "linear-gradient(rgba(139, 92, 246, 0.4) 1px, transparent 1px), linear-gradient(90deg, rgba(139, 92, 246, 0.4) 1px, transparent 1px)",
-                backgroundSize: "60px 60px",
-              }}
-            />
-          </div>
+          {/* Subtle grid */}
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              backgroundImage:
+                "linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px)",
+              backgroundSize: "64px 64px",
+            }}
+          />
 
-          {/* Floating glowing nodes */}
-          <div className="absolute w-[40vw] h-[40vw] rounded-full bg-violet-600/5 blur-[120px] top-[10%] left-[20%] animate-pulse" />
-          <div className="absolute w-[35vw] h-[35vw] rounded-full bg-cyan-600/5 blur-[100px] bottom-[15%] right-[20%] animate-pulse" style={{ animationDelay: "2s" }} />
+          {/* Ambient glows */}
+          <div
+            className="absolute w-[45vw] h-[45vw] rounded-full animate-pulse"
+            style={{ background: "rgba(59,130,246,0.04)", filter: "blur(120px)", top: "5%", left: "15%" }}
+          />
+          <div
+            className="absolute w-[35vw] h-[35vw] rounded-full animate-pulse"
+            style={{ background: "rgba(99,102,241,0.03)", filter: "blur(100px)", bottom: "10%", right: "15%", animationDelay: "2s" }}
+          />
 
           <motion.div
-            className="text-center space-y-9 max-w-md px-10 relative z-10"
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0, transition: { delay: 0.15, duration: 0.6, ease: "easeOut" } }}
+            className="text-center space-y-10 max-w-sm px-10 relative z-10"
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0, transition: { delay: 0.1, duration: 0.5, ease: "easeOut" } }}
           >
-            {/* Core glowing logo node */}
-            <div className="relative mx-auto w-32 h-32">
-              <div className="absolute inset-0 rounded-full bg-gradient-to-br from-violet-600 to-indigo-600 opacity-30 blur-2xl animate-pulse" />
-              <div className="absolute inset-[-4px] rounded-full border border-violet-500/10 animate-ping opacity-20" style={{ animationDuration: "3s" }} />
-              <div className="absolute inset-0 rounded-full border border-violet-500/20" />
+            {/* Logo orb */}
+            <div className="relative mx-auto w-28 h-28">
               <div
-                className="relative w-32 h-32 rounded-full flex items-center justify-center"
+                className="absolute inset-0 rounded-full animate-pulse"
+                style={{ background: "rgba(59,130,246,0.15)", filter: "blur(24px)" }}
+              />
+              <motion.div
+                className="absolute inset-[-4px] rounded-full"
+                style={{ border: "1px solid rgba(59,130,246,0.08)" }}
+                animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0, 0.3] }}
+                transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+              />
+              <div
+                className="relative w-28 h-28 rounded-full flex items-center justify-center"
                 style={{
-                  background: "radial-gradient(circle at 35% 35%, rgba(139, 92, 246, 0.28), rgba(99, 102, 241, 0.12))",
-                  border: "1px solid rgba(139, 92, 246, 0.35)",
-                  boxShadow: "inset 0 0 20px rgba(139, 92, 246, 0.3)",
+                  background: "radial-gradient(circle at 35% 35%, rgba(59,130,246,0.2), rgba(29,78,216,0.08))",
+                  border: "1px solid rgba(59,130,246,0.25)",
                 }}
               >
-                <Zap className="w-14 h-14 text-violet-200 drop-shadow-[0_0_12px_rgba(139,92,246,0.5)]" />
+                <Zap className="w-12 h-12" style={{ color: "#60a5fa" }} />
               </div>
             </div>
 
-            {/* Title & Description */}
-            <div className="space-y-3.5">
-              <h1 className="text-6xl font-black tracking-tight font-display bg-gradient-to-r from-violet-200 via-indigo-200 to-cyan-200 bg-clip-text text-transparent">
+            {/* Title */}
+            <div className="space-y-3">
+              <h1
+                className="text-5xl font-bold tracking-tight"
+                style={{
+                  background: "linear-gradient(135deg, #f0f4ff 0%, #93c5fd 100%)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                }}
+              >
                 Nova
               </h1>
-              <div className="w-12 h-0.5 bg-gradient-to-r from-violet-500 to-indigo-500 mx-auto rounded-full" />
-              <p className="text-slate-400 text-sm leading-relaxed max-w-xs mx-auto">
-                Next-generation local AI assistant.<br />
-                Say <span className="text-violet-300 font-bold font-mono">"{wakeWord || "nova"}"</span> or click the orb to connect.
+              <div className="w-10 h-px mx-auto" style={{ background: "var(--accent-border)" }} />
+              <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+                Your local AI assistant.{" "}
+                <br />
+                Say{" "}
+                <span className="font-mono font-semibold" style={{ color: "#93c5fd" }}>
+                  "{wakeWord || "nova"}"
+                </span>{" "}
+                or tap to connect.
               </p>
             </div>
 
-            {/* Activation Button */}
-            <div className="space-y-4">
+            {/* CTA button */}
+            <div className="space-y-3">
               <motion.button
                 id="init-button"
                 onClick={initSystem}
-                className="w-full py-4.5 rounded-2xl font-bold text-sm tracking-wide relative overflow-hidden group select-none cursor-pointer"
+                className="w-full py-4 rounded-xl font-semibold text-sm tracking-wide relative overflow-hidden cursor-pointer select-none"
                 style={{
-                  background: "linear-gradient(135deg, rgba(139, 92, 246, 0.4), rgba(99, 102, 241, 0.3))",
-                  border: "1px solid rgba(139, 92, 246, 0.5)",
-                  boxShadow: "0 8px 32px rgba(139, 92, 246, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.1)",
+                  background: "var(--accent-dim)",
+                  border: "1px solid var(--accent-border)",
+                  color: "#93c5fd",
                 }}
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
               >
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000 ease-out" />
-                <span className="relative text-white tracking-widest uppercase font-mono font-bold">
+                <div
+                  className="absolute inset-0 -translate-x-full hover:translate-x-full transition-transform duration-700"
+                  style={{ background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent)" }}
+                />
+                <span className="relative font-mono tracking-widest uppercase text-xs font-bold">
                   Initialize Assistant
                 </span>
               </motion.button>
-              <p className="text-[10px] text-slate-500 font-mono tracking-widest uppercase">
+              <p
+                className="font-mono uppercase"
+                style={{ fontSize: "10px", color: "var(--text-muted)", letterSpacing: "0.1em" }}
+              >
                 Requires Microphone Access
               </p>
             </div>

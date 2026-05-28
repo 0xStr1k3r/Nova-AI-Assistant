@@ -12,7 +12,7 @@ import {
   sendKeyboardInput,
   pressKey,
   getActiveWindow,
-} from "../../../browser_automation/desktop-control";
+} from "../../browser_automation/desktop-control";
 import { getDisplayInfo, isX11, isWayland } from "./display-manager";
 
 export interface GuiActionResult {

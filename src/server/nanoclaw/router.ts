@@ -136,6 +136,54 @@ class ChannelRouter {
     this.activeAgentGroups.set(agentGroup.id, agentGroup);
   }
 
+  async listAgentGroups(): Promise<AgentGroup[]> {
+    const rows = await this.dbAll(
+      `SELECT id, name, description, created_at, updated_at, is_multi_user, enabled_channels, status
+       FROM agent_groups
+       ORDER BY updated_at DESC`
+    );
+
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      description: row.description || '',
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      isMultiUser: !!row.is_multi_user,
+      enabledChannels: this.parseChannels(row.enabled_channels),
+      status: row.status,
+    }));
+  }
+
+  async getAgentGroup(agentGroupId: string): Promise<AgentGroup | null> {
+    const row = await this.dbGet(
+      `SELECT id, name, description, created_at, updated_at, is_multi_user, enabled_channels, status
+       FROM agent_groups WHERE id = ?`,
+      [agentGroupId]
+    );
+
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      name: row.name,
+      description: row.description || '',
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      isMultiUser: !!row.is_multi_user,
+      enabledChannels: this.parseChannels(row.enabled_channels),
+      status: row.status,
+    };
+  }
+
+  async queryAll<T = any>(sql: string, params: any[] = []): Promise<T[]> {
+    return this.dbAll(sql, params);
+  }
+
+  async queryOne<T = any>(sql: string, params: any[] = []): Promise<T | null> {
+    return this.dbGet(sql, params);
+  }
+
   /**
    * Ingest message from any channel
    */
@@ -365,6 +413,26 @@ class ChannelRouter {
         resolve(err ? null : row);
       });
     });
+  }
+
+  private dbAll(sql: string, params: any[] = []): Promise<any[]> {
+    return new Promise((resolve, reject) => {
+      this.db.all(sql, params, (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      });
+    });
+  }
+
+  private parseChannels(raw: string | null): MessageChannel[] {
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (err) {
+      console.warn('[ROUTER] Failed to parse enabled channels JSON:', err);
+      return [];
+    }
   }
 
   private async getDeliveryTask(deliveryId: string): Promise<DeliveryTask | null> {

@@ -42,6 +42,21 @@ export interface IntegrationsConfig {
   nvidiaModel?: string;
   openrouterApiKey?: string;
   groqApiKey?: string;
+  telegramEnabled?: boolean;
+  telegramBotToken?: string;
+  telegramWebhookUrl?: string;
+  discordEnabled?: boolean;
+  discordBotToken?: string;
+  discordWebhookUrl?: string;
+  slackEnabled?: boolean;
+  slackBotToken?: string;
+  slackVerificationToken?: string;
+  slackWebhookUrl?: string;
+  whatsappEnabled?: boolean;
+  whatsappAccessToken?: string;
+  whatsappPhoneNumberId?: string;
+  whatsappWebhookUrl?: string;
+  webhookChannels?: Record<string, { enabled?: boolean; webhookUrl?: string }>;
 }
 
 export interface NovaConfig {
@@ -176,6 +191,21 @@ const defaultConfig: NovaConfig = {
     nvidiaModel: "auto",
     openrouterApiKey: "",
     groqApiKey: "",
+    telegramEnabled: false,
+    telegramBotToken: "",
+    telegramWebhookUrl: "",
+    discordEnabled: false,
+    discordBotToken: "",
+    discordWebhookUrl: "",
+    slackEnabled: false,
+    slackBotToken: "",
+    slackVerificationToken: "",
+    slackWebhookUrl: "",
+    whatsappEnabled: false,
+    whatsappAccessToken: "",
+    whatsappPhoneNumberId: "",
+    whatsappWebhookUrl: "",
+    webhookChannels: {},
   },
 };
 
@@ -248,6 +278,21 @@ export function getDb(): NovaConfig {
           nvidiaModel: "auto",
           openrouterApiKey: "",
           groqApiKey: "",
+          telegramEnabled: false,
+          telegramBotToken: "",
+          telegramWebhookUrl: "",
+          discordEnabled: false,
+          discordBotToken: "",
+          discordWebhookUrl: "",
+          slackEnabled: false,
+          slackBotToken: "",
+          slackVerificationToken: "",
+          slackWebhookUrl: "",
+          whatsappEnabled: false,
+          whatsappAccessToken: "",
+          whatsappPhoneNumberId: "",
+          whatsappWebhookUrl: "",
+          webhookChannels: {},
         };
       } else {
         if (merged.integrations.customAgentEnabled === undefined) {
@@ -268,6 +313,21 @@ export function getDb(): NovaConfig {
         if (merged.integrations.groqApiKey === undefined) {
           merged.integrations.groqApiKey = "";
         }
+        if (merged.integrations.telegramEnabled === undefined) merged.integrations.telegramEnabled = false;
+        if (merged.integrations.telegramBotToken === undefined) merged.integrations.telegramBotToken = "";
+        if (merged.integrations.telegramWebhookUrl === undefined) merged.integrations.telegramWebhookUrl = "";
+        if (merged.integrations.discordEnabled === undefined) merged.integrations.discordEnabled = false;
+        if (merged.integrations.discordBotToken === undefined) merged.integrations.discordBotToken = "";
+        if (merged.integrations.discordWebhookUrl === undefined) merged.integrations.discordWebhookUrl = "";
+        if (merged.integrations.slackEnabled === undefined) merged.integrations.slackEnabled = false;
+        if (merged.integrations.slackBotToken === undefined) merged.integrations.slackBotToken = "";
+        if (merged.integrations.slackVerificationToken === undefined) merged.integrations.slackVerificationToken = "";
+        if (merged.integrations.slackWebhookUrl === undefined) merged.integrations.slackWebhookUrl = "";
+        if (merged.integrations.whatsappEnabled === undefined) merged.integrations.whatsappEnabled = false;
+        if (merged.integrations.whatsappAccessToken === undefined) merged.integrations.whatsappAccessToken = "";
+        if (merged.integrations.whatsappPhoneNumberId === undefined) merged.integrations.whatsappPhoneNumberId = "";
+        if (merged.integrations.whatsappWebhookUrl === undefined) merged.integrations.whatsappWebhookUrl = "";
+        if (merged.integrations.webhookChannels === undefined) merged.integrations.webhookChannels = {};
       }
 
       if (envWakeWord) merged.wakeWord = envWakeWord;

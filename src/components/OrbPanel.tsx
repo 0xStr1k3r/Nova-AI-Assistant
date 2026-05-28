@@ -30,83 +30,76 @@ export default function OrbPanel({
 
   return (
     <div
-      className="lg:col-span-3 rounded-3xl flex flex-col items-center justify-center relative overflow-hidden p-8 min-h-[460px] lg:min-h-0 select-none group/panel"
+      className="lg:col-span-3 rounded-2xl flex flex-col items-center justify-center relative overflow-hidden p-8 min-h-[460px] lg:min-h-0 select-none"
       style={{
-        background: "rgba(255, 255, 255, 0.02)",
-        border: "1px solid rgba(255, 255, 255, 0.05)",
-        backdropFilter: "blur(16px)",
+        background: "var(--bg-card)",
+        border: "1px solid var(--bg-border)",
       }}
     >
-      {/* Sci-fi corner brackets decoration */}
-      <div className="absolute top-4 left-4 w-4 h-4 border-t-2 border-l-2 border-violet-500/20 group-hover/panel:border-violet-500/40 transition-colors duration-300" />
-      <div className="absolute top-4 right-4 w-4 h-4 border-t-2 border-r-2 border-violet-500/20 group-hover/panel:border-violet-500/40 transition-colors duration-300" />
-      <div className="absolute bottom-4 left-4 w-4 h-4 border-b-2 border-l-2 border-violet-500/20 group-hover/panel:border-violet-500/40 transition-colors duration-300" />
-      <div className="absolute bottom-4 right-4 w-4 h-4 border-b-2 border-r-2 border-violet-500/20 group-hover/panel:border-violet-500/40 transition-colors duration-300" />
+      {/* Subtle corner brackets */}
+      <div className="absolute top-4 left-4 w-5 h-5 border-t border-l" style={{ borderColor: "var(--bg-border-hover)" }} />
+      <div className="absolute top-4 right-4 w-5 h-5 border-t border-r" style={{ borderColor: "var(--bg-border-hover)" }} />
+      <div className="absolute bottom-4 left-4 w-5 h-5 border-b border-l" style={{ borderColor: "var(--bg-border-hover)" }} />
+      <div className="absolute bottom-4 right-4 w-5 h-5 border-b border-r" style={{ borderColor: "var(--bg-border-hover)" }} />
 
-      {/* Ambient background glow highlights */}
+      {/* Ambient glow */}
       <div
-        className={`absolute w-72 h-72 rounded-full transition-all duration-1000 blur-[100px] pointer-events-none opacity-40 ${
-          isConnected
-            ? "bg-emerald-500/10 scale-110"
+        className={`absolute w-80 h-80 rounded-full pointer-events-none transition-all duration-1000 blur-[120px]`}
+        style={{
+          background: isConnected
+            ? "rgba(16,185,129,0.06)"
             : isConnecting
-            ? "bg-amber-500/10 scale-105 animate-pulse"
-            : "bg-violet-500/5"
-        }`}
+            ? "rgba(245,158,11,0.05)"
+            : "rgba(59,130,246,0.04)",
+          opacity: isConnected || isConnecting ? 1 : 0.6,
+        }}
       />
 
-      {/* Central Interactive Orb */}
-      <div className="relative z-10 orb-float" style={{ filter: "drop-shadow(0 0 50px rgba(139,92,246,0.15))" }}>
-        {/* Dynamic Glow Layer */}
+      {/* Central Orb */}
+      <div className="relative z-10 orb-float">
+        {/* Glow layer */}
         <div className={`orb-glow ${isConnected ? "orb-glow-active" : ""}`} />
 
         <motion.button
           id="main-orb"
           onClick={isConnected || isConnecting ? disconnect : connect}
-          className="w-56 h-56 rounded-full flex items-center justify-center relative select-none cursor-pointer focus:outline-none"
+          className="w-52 h-52 rounded-full flex items-center justify-center relative select-none cursor-pointer focus:outline-none"
           style={{
             background: isConnected
-              ? "radial-gradient(circle at 35% 35%, rgba(52, 211, 153, 0.28), rgba(16, 185, 129, 0.12))"
+              ? "radial-gradient(circle at 35% 35%, rgba(16,185,129,0.2), rgba(4,120,87,0.08))"
               : isConnecting
-              ? "radial-gradient(circle at 35% 35%, rgba(251, 191, 36, 0.2), rgba(245, 158, 11, 0.08))"
-              : "radial-gradient(circle at 35% 35%, rgba(139, 92, 246, 0.22), rgba(99, 102, 241, 0.08))",
+              ? "radial-gradient(circle at 35% 35%, rgba(245,158,11,0.15), rgba(180,83,9,0.06))"
+              : "radial-gradient(circle at 35% 35%, rgba(59,130,246,0.15), rgba(29,78,216,0.06))",
             border: isConnected
-              ? "1.5px solid rgba(52, 211, 153, 0.4)"
+              ? "1.5px solid rgba(16,185,129,0.35)"
               : isConnecting
-              ? "1.5px solid rgba(251, 191, 36, 0.3)"
-              : "1.5px solid rgba(139, 92, 246, 0.3)",
+              ? "1.5px solid rgba(245,158,11,0.3)"
+              : "1.5px solid rgba(59,130,246,0.25)",
           }}
-          whileHover={{ scale: 1.04 }}
+          whileHover={{ scale: 1.03 }}
           whileTap={{ scale: 0.94 }}
         >
-          {/* Subtle Outer Pulsing Wave */}
+          {/* Pulse ring */}
           {(isConnected || isWakeWordListening) && (
             <motion.div
-              className="absolute inset-[-12px] rounded-full pointer-events-none"
+              className="absolute inset-[-14px] rounded-full pointer-events-none"
               style={{
                 border: isConnected
-                  ? "1px solid rgba(52, 211, 153, 0.2)"
-                  : "1px solid rgba(139, 92, 246, 0.18)",
+                  ? "1px solid rgba(16,185,129,0.18)"
+                  : "1px solid rgba(59,130,246,0.15)",
               }}
-              animate={{
-                scale: [0.95, 1.12, 0.95],
-                opacity: [0.35, 0, 0.35],
-              }}
-              transition={{
-                duration: 3,
-                repeat: Infinity,
-                ease: "easeInOut",
-              }}
+              animate={{ scale: [0.95, 1.12, 0.95], opacity: [0.4, 0, 0.4] }}
+              transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
             />
           )}
 
-          {/* Inner Glass Orb */}
+          {/* Inner glass */}
           <div
-            className="w-40 h-40 rounded-full flex items-center justify-center relative overflow-hidden"
+            className="w-36 h-36 rounded-full flex items-center justify-center relative overflow-hidden"
             style={{
-              background: "radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.07), rgba(0, 0, 0, 0.4))",
-              border: "1px solid rgba(255, 255, 255, 0.06)",
+              background: "radial-gradient(circle at 30% 30%, rgba(255,255,255,0.05), rgba(0,0,0,0.3))",
+              border: "1px solid rgba(255,255,255,0.05)",
               backdropFilter: "blur(12px)",
-              boxShadow: "inset 0 4px 20px rgba(255, 255, 255, 0.05)",
             }}
           >
             <AnimatePresence mode="wait">
@@ -116,9 +109,12 @@ export default function OrbPanel({
                   initial={{ opacity: 0, scale: 0.7 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0 }}
-                  transition={{ duration: 0.25 }}
+                  transition={{ duration: 0.2 }}
                 >
-                  <Activity className="w-16 h-16 text-amber-300 animate-spin" style={{ animationDuration: "2s" }} />
+                  <Activity
+                    className="w-14 h-14 animate-spin"
+                    style={{ color: "var(--warn)", animationDuration: "2s" }}
+                  />
                 </motion.div>
               ) : isConnected ? (
                 <motion.div
@@ -126,14 +122,17 @@ export default function OrbPanel({
                   initial={{ opacity: 0, scale: 0.7 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0 }}
-                  transition={{ duration: 0.25 }}
-                  className="flex gap-1.5 items-end h-11"
+                  transition={{ duration: 0.2 }}
+                  className="flex gap-1.5 items-end h-10"
                 >
                   {["bar-1", "bar-2", "bar-3", "bar-4", "bar-5", "bar-6", "bar-7"].map((b, i) => (
                     <div
                       key={i}
-                      className={`w-2.5 bg-gradient-to-t from-emerald-400 to-cyan-300 rounded-full ${b}`}
-                      style={{ minHeight: 6 }}
+                      className={`w-2 rounded-full ${b}`}
+                      style={{
+                        minHeight: 4,
+                        background: "linear-gradient(to top, #10b981, #34d399)",
+                      }}
                     />
                   ))}
                 </motion.div>
@@ -143,9 +142,12 @@ export default function OrbPanel({
                   initial={{ opacity: 0, scale: 0.7 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0 }}
-                  transition={{ duration: 0.25 }}
+                  transition={{ duration: 0.2 }}
                 >
-                  <Mic className="w-16 h-16 text-violet-300 drop-shadow-[0_0_8px_rgba(139,92,246,0.3)]" />
+                  <Mic
+                    className="w-14 h-14"
+                    style={{ color: "#60a5fa" }}
+                  />
                 </motion.div>
               )}
             </AnimatePresence>
@@ -153,16 +155,16 @@ export default function OrbPanel({
         </motion.button>
       </div>
 
-      {/* Voice Status Text */}
+      {/* Status text */}
       <div className="mt-10 text-center z-10 space-y-2 max-w-sm">
         <AnimatePresence mode="wait">
           <motion.p
             key={status}
-            className="text-2xl font-bold tracking-tight text-white font-display"
-            initial={{ opacity: 0, y: 10 }}
+            className="text-2xl font-semibold tracking-tight text-white"
+            initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.25, ease: "easeOut" }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2 }}
           >
             {isConnected
               ? `Listening, ${userName}…`
@@ -173,7 +175,7 @@ export default function OrbPanel({
               : "Nova Standby"}
           </motion.p>
         </AnimatePresence>
-        <p className="text-[11px] text-slate-500 font-mono tracking-widest uppercase">
+        <p className="font-mono uppercase" style={{ fontSize: "10px", color: "var(--text-muted)", letterSpacing: "0.1em" }}>
           {isConnected
             ? `SESSION ACTIVE · ${formatTime(sessionTime)}`
             : isWakeWordListening
@@ -182,26 +184,31 @@ export default function OrbPanel({
         </p>
       </div>
 
-      {/* Action Footer Trigger (End Session / Standby indicator) */}
+      {/* Footer action */}
       <div className="absolute bottom-8 z-10 w-full px-8 flex justify-center">
         {isConnected ? (
           <motion.button
-            initial={{ opacity: 0, y: 12 }}
+            initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 12 }}
             onClick={disconnect}
-            className="px-6 py-2.5 rounded-full flex items-center gap-2 text-xs font-bold font-mono tracking-wider text-rose-300 hover:text-white transition-all border border-rose-500/25 bg-rose-500/10 cursor-pointer select-none"
-            whileHover={{ scale: 1.03, background: "rgba(239, 68, 68, 0.2)", borderColor: "rgba(239, 68, 68, 0.4)" }}
+            className="px-5 py-2 rounded-xl flex items-center gap-2 text-xs font-medium font-mono tracking-wide transition-all cursor-pointer select-none"
+            style={{
+              color: "#f87171",
+              border: "1px solid rgba(239,68,68,0.2)",
+              background: "rgba(239,68,68,0.07)",
+            }}
+            whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.97 }}
           >
             <Power className="w-3.5 h-3.5" />
-            END VOICE STREAM
+            END SESSION
           </motion.button>
         ) : (
           <motion.p
-            className="text-[10px] text-slate-600 font-mono tracking-widest uppercase"
-            animate={{ opacity: [0.4, 0.8, 0.4] }}
-            transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+            className="font-mono uppercase"
+            style={{ fontSize: "10px", color: "var(--text-muted)", letterSpacing: "0.1em" }}
+            animate={{ opacity: [0.4, 0.7, 0.4] }}
+            transition={{ duration: 3, repeat: Infinity }}
           >
             TAP ORB TO {isConnecting ? "CANCEL" : "WAKE"}
           </motion.p>

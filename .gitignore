@@ -21,6 +21,7 @@ lerna-debug.log*
 
 # Environment variables
 .env
+.copilot.md
 .env.local
 .env.*.local
 !.env.example

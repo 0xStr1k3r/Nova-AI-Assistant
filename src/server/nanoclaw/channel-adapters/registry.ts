@@ -8,6 +8,8 @@ import type { MessageChannel, ChannelAdapter } from '../types';
 import TelegramAdapter from './telegram';
 import DiscordAdapter from './discord';
 import SlackAdapter from './slack';
+import WhatsAppAdapter from './whatsapp';
+import WebhookAdapter from './webhook';
 
 interface AdapterConfig {
   channel: MessageChannel;
@@ -67,6 +69,22 @@ class ChannelAdapterRegistry {
       }
     }
 
+    // WhatsApp Cloud API
+    const whatsappEnabled = process.env.WHATSAPP_ENABLED !== 'false';
+    const whatsappToken = process.env.WHATSAPP_ACCESS_TOKEN;
+    const whatsappPhoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+    if (whatsappEnabled && whatsappToken && whatsappPhoneNumberId) {
+      const whatsappAdapter = new WhatsAppAdapter(whatsappToken, whatsappPhoneNumberId, agentGroupId);
+      const isValid = await whatsappAdapter.verifyCredentials();
+      if (isValid) {
+        this.registerAdapter(whatsappAdapter, {
+          channel: 'whatsapp',
+          enabled: true,
+          config: { agentGroupId },
+        });
+      }
+    }
+
     // Slack
     const slackToken = process.env.SLACK_BOT_TOKEN;
     const slackVerification = process.env.SLACK_VERIFICATION_TOKEN;
@@ -82,6 +100,31 @@ class ChannelAdapterRegistry {
             verificationToken: slackVerification,
             agentGroupId,
           },
+        });
+      }
+    }
+
+    const webhookChannelMap: Array<{ channel: MessageChannel; envKey: string }> = [
+      { channel: 'teams', envKey: 'TEAMS_WEBHOOK_URL' },
+      { channel: 'imessage', envKey: 'IMESSAGE_WEBHOOK_URL' },
+      { channel: 'matrix', envKey: 'MATRIX_WEBHOOK_URL' },
+      { channel: 'signal', envKey: 'SIGNAL_WEBHOOK_URL' },
+      { channel: 'viber', envKey: 'VIBER_WEBHOOK_URL' },
+      { channel: 'sms', envKey: 'SMS_WEBHOOK_URL' },
+      { channel: 'email', envKey: 'EMAIL_WEBHOOK_URL' },
+      { channel: 'web', envKey: 'WEB_WEBHOOK_URL' },
+    ];
+
+    for (const { channel, envKey } of webhookChannelMap) {
+      const webhookUrl = process.env[envKey];
+      if (!webhookUrl) continue;
+      const adapter = new WebhookAdapter(channel, webhookUrl, agentGroupId);
+      const isValid = await adapter.verifyCredentials();
+      if (isValid) {
+        this.registerAdapter(adapter, {
+          channel,
+          enabled: true,
+          config: { agentGroupId },
         });
       }
     }
